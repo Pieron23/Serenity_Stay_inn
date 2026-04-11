@@ -1,0 +1,7 @@
+﻿__pycache__/
+.streamlit/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.cloudflared_*.log

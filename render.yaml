@@ -1,0 +1,13 @@
+﻿services:
+  - type: web
+    name: serenity-stay-inn-dashboard
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.address 0.0.0.0 --server.port $PORT --server.headless true
+    envVars:
+      - key: SERENITY_DATA_DIR
+        value: /var/data
+    disk:
+      name: serenity-data
+      mountPath: /var/data
+      sizeGB: 1

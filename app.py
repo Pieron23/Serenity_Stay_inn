@@ -1428,16 +1428,26 @@ def inject_styles() -> None:
 
         div[data-baseweb="input"] > div,
         div[data-baseweb="base-input"] > div {
-            background: #f8fbff !important;
-            border: 1px solid #93c5fd !important;
-            border-radius: 12px !important;
-            box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+            background: #ffffff !important;
+            border: 2px solid #bfdbfe !important;
+            border-radius: 14px !important;
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.9),
+                0 6px 14px rgba(15, 23, 42, 0.06);
+            transition: all 0.16s ease;
+        }
+
+        div[data-baseweb="input"] > div:hover,
+        div[data-baseweb="base-input"] > div:hover {
+            border-color: #93c5fd !important;
         }
 
         div[data-baseweb="input"] > div:focus-within,
         div[data-baseweb="base-input"] > div:focus-within {
-            border-color: #3b82f6 !important;
-            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2) !important;
+            border-color: #2563eb !important;
+            box-shadow:
+                0 0 0 3px rgba(37, 99, 235, 0.2),
+                0 10px 20px rgba(37, 99, 235, 0.1) !important;
         }
 
         div[data-baseweb="input"] input,
@@ -1449,66 +1459,96 @@ def inject_styles() -> None:
         div[data-baseweb="input"] input::placeholder,
         div[data-baseweb="base-input"] input::placeholder {
             color: #64748b !important;
+            opacity: 1 !important;
         }
 
         div[data-testid="stTextInput"] label p,
-        div[data-testid="stTextInput"] label span {
+        div[data-testid="stTextInput"] label span,
+        div[data-testid="stNumberInput"] label p,
+        div[data-testid="stNumberInput"] label span {
             color: #0b1324 !important;
             font-weight: 700 !important;
             opacity: 1 !important;
         }
 
-        .stForm div[data-baseweb="input"] > div {
-            background: #f8fbff;
+        .stForm {
+            background: rgba(255, 255, 255, 0.58);
             border: 1px solid #bfdbfe;
-            border-radius: 10px;
+            border-radius: 16px;
+            padding: 12px 12px 14px 12px;
+            box-shadow: 0 10px 20px rgba(29, 78, 216, 0.08);
         }
 
-        .stForm div[data-baseweb="input"] input {
-            color: #0f172a;
-            font-weight: 600;
+        .stForm div[data-baseweb="input"] > div,
+        .stForm div[data-baseweb="base-input"] > div {
+            background: #ffffff !important;
+            border: 2px solid #93c5fd !important;
+            border-radius: 12px !important;
+            box-shadow: 0 6px 14px rgba(37, 99, 235, 0.1) !important;
         }
 
-        .stForm div[data-baseweb="input"] input::placeholder {
-            color: #94a3b8;
+        .stForm div[data-baseweb="input"] > div:focus-within,
+        .stForm div[data-baseweb="base-input"] > div:focus-within {
+            border-color: #1d4ed8 !important;
+            box-shadow:
+                0 0 0 3px rgba(37, 99, 235, 0.18),
+                0 10px 18px rgba(249, 115, 22, 0.12) !important;
+        }
+
+        .stForm div[data-baseweb="input"] input,
+        .stForm div[data-baseweb="base-input"] input {
+            color: #0f172a !important;
+            font-weight: 700 !important;
+        }
+
+        .stForm div[data-baseweb="input"] input::placeholder,
+        .stForm div[data-baseweb="base-input"] input::placeholder {
+            color: #64748b !important;
         }
 
         .stForm div[data-baseweb="input"] button {
-            color: #1d4ed8;
-            background: transparent;
+            color: #1d4ed8 !important;
+            background: transparent !important;
         }
 
         .stForm label {
             color: #1e3a8a !important;
-            font-weight: 600;
+            font-weight: 700 !important;
         }
 
         [data-testid="stFormSubmitButton"] button {
-            border-radius: 10px;
-            font-weight: 700;
-            border-width: 0;
-            min-height: 56px;
-            height: 56px;
+            border-radius: 12px;
+            font-weight: 800;
+            border: 1px solid #60a5fa !important;
+            min-height: 54px;
+            height: 54px;
             width: 100%;
             white-space: nowrap;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             transition: all 0.18s ease;
-            color: #ffffff !important;
-            background: linear-gradient(135deg, #7dd3fc, #60a5fa) !important;
-            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.22);
+            color: #0b2f57 !important;
+            background: linear-gradient(135deg, #bae6fd, #7dd3fc) !important;
+            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.2);
+        }
+
+        [data-testid="stFormSubmitButton"] button p,
+        [data-testid="stButton"] button p,
+        [data-testid="stPopover"] button p {
+            color: inherit !important;
+            font-weight: 800 !important;
         }
 
         [data-testid="stFormSubmitButton"] button:hover {
             transform: translateY(-1px);
-            background: linear-gradient(135deg, #60a5fa, #3b82f6) !important;
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
+            background: linear-gradient(135deg, #93c5fd, #60a5fa) !important;
+            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.28);
         }
 
         [data-testid="stFormSubmitButton"] button:active {
             transform: translateY(0px);
-            background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+            background: linear-gradient(135deg, #7dd3fc, #3b82f6) !important;
         }
 
         [data-testid="stFormSubmitButton"] button:focus-visible {
@@ -1517,8 +1557,9 @@ def inject_styles() -> None:
         }
 
         [data-testid="stFormSubmitButton"] button:disabled {
-            background: #bfdbfe !important;
-            color: #eff6ff !important;
+            background: #dbeafe !important;
+            border: 1px solid #bfdbfe !important;
+            color: #64748b !important;
             box-shadow: none !important;
             opacity: 1 !important;
             cursor: not-allowed;
@@ -1526,17 +1567,18 @@ def inject_styles() -> None:
 
         [data-testid="stButton"] button,
         [data-testid="stPopover"] button {
-            border-radius: 10px !important;
-            font-weight: 700 !important;
+            border-radius: 12px !important;
+            font-weight: 800 !important;
             border: 1px solid #93c5fd !important;
-            color: #0f172a !important;
-            background: #eff6ff !important;
+            color: #0b2f57 !important;
+            background: linear-gradient(135deg, #e0f2fe, #dbeafe) !important;
+            min-height: 44px;
         }
 
         [data-testid="stButton"] button:hover,
         [data-testid="stPopover"] button:hover {
-            color: #0f172a !important;
-            background: #dbeafe !important;
+            color: #0b2f57 !important;
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe) !important;
             border-color: #60a5fa !important;
         }
 
@@ -2369,6 +2411,10 @@ def main() -> None:
         st.session_state["edit_unlocked"] = False
     if "edit_pin_invalid" not in st.session_state:
         st.session_state["edit_pin_invalid"] = False
+    if "clear_rooms_inputs" not in st.session_state:
+        st.session_state["clear_rooms_inputs"] = False
+    if "clear_bar_inputs" not in st.session_state:
+        st.session_state["clear_bar_inputs"] = False
 
     flash_message = st.session_state.pop("flash_message", None)
     if flash_message:
@@ -2527,6 +2573,13 @@ def main() -> None:
         "After saving, use Update/Delete with edit PIN."
     )
 
+    if st.session_state.pop("clear_rooms_inputs", False):
+        st.session_state["rooms_revenue_input"] = ""
+        st.session_state["rooms_note"] = ""
+    if st.session_state.pop("clear_bar_inputs", False):
+        st.session_state["bar_revenue_input"] = ""
+        st.session_state["bar_note"] = ""
+
     room_col, bar_col = st.columns(2)
 
     with room_col:
@@ -2622,8 +2675,7 @@ def main() -> None:
             st.rerun()
         ok, msg = save_entry(rooms_date, rooms_revenue, rooms_note, "Rooms", settings)
         if ok:
-            st.session_state["rooms_revenue_input"] = ""
-            st.session_state["rooms_note"] = ""
+            st.session_state["clear_rooms_inputs"] = True
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
@@ -2666,8 +2718,7 @@ def main() -> None:
             st.rerun()
         ok, msg = save_entry(bar_date, bar_revenue, bar_note, "Bar", settings)
         if ok:
-            st.session_state["bar_revenue_input"] = ""
-            st.session_state["bar_note"] = ""
+            st.session_state["clear_bar_inputs"] = True
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 

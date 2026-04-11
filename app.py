@@ -20,8 +20,29 @@ import streamlit.components.v1 as components
 
 APP_TITLE = "Serenity Stay Inn Dashboard"
 APP_DIR = Path(__file__).resolve().parent
-DATA_DIR = Path(os.getenv("SERENITY_DATA_DIR", str(APP_DIR))).resolve()
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_data_dir() -> Path:
+    requested = os.getenv("SERENITY_DATA_DIR", "").strip()
+    candidates = []
+    if requested:
+        candidates.append(Path(requested))
+    candidates.extend([APP_DIR / "data", APP_DIR, Path("/tmp/serenity-data")])
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except Exception:
+            continue
+
+    return APP_DIR
+
+
+DATA_DIR = _resolve_data_dir()
 EXCEL_FILE = DATA_DIR / "guest_room_data.xlsx"
 BUNDLED_EXCEL_FILE = APP_DIR / "guest_room_data.xlsx"
 TUNNEL_LOG_FILE = APP_DIR / ".cloudflared_tunnel.log"

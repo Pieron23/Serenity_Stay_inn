@@ -2395,9 +2395,6 @@ def main() -> None:
     settings = read_settings()
     all_revenue_df = read_daily_data()
     all_expense_df = read_expense_data()
-    _init_tunnel_state()
-    refresh_public_tunnel_state()
-
     st.title(APP_TITLE)
     st.caption("Local, offline revenue intelligence for Rooms + Bar operations.")
     if USE_POSTGRES:
@@ -2442,54 +2439,10 @@ def main() -> None:
             st.rerun()
 
         st.markdown("---")
-        st.markdown("### Access Links")
-        for link in build_access_links():
-            st.code(link)
-        st.caption("Local/LAN links above work on the same network.")
-
-        st.markdown("#### Public Internet Link")
-        public_url = str(st.session_state.get("public_tunnel_url", "")).strip()
-        public_error = str(st.session_state.get("public_tunnel_error", "")).strip()
-        tunnel_is_running = public_tunnel_running()
-
-        if public_url:
-            st.success("Public link is live. Share this link with anyone:")
-            st.code(public_url)
-        elif tunnel_is_running:
-            st.info("Starting public link... please wait a few seconds, then click Refresh.")
-        elif public_error:
-            st.warning(public_error)
-
-        t1, t2 = st.columns(2)
-        start_public_pressed = t1.button(
-            "Start public link",
-            use_container_width=True,
-            disabled=tunnel_is_running,
-        )
-        stop_public_pressed = t2.button(
-            "Stop public link",
-            use_container_width=True,
-            disabled=not tunnel_is_running,
-        )
-        refresh_public_pressed = st.button("Refresh public link", use_container_width=True)
-
-        if start_public_pressed:
-            ok, msg = start_public_tunnel()
-            st.session_state["flash_message"] = {"ok": ok, "message": msg}
-            st.rerun()
-
-        if stop_public_pressed:
-            ok, msg = stop_public_tunnel()
-            st.session_state["flash_message"] = {"ok": ok, "message": msg}
-            st.rerun()
-
-        if refresh_public_pressed:
-            refresh_public_tunnel_state()
-            st.rerun()
-
-        if not find_cloudflared_binary():
-            st.caption("Install cloudflared once to enable public links:")
-            st.code("winget install --id Cloudflare.cloudflared")
+        public_app_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+        if public_app_url:
+            st.markdown("### App Link")
+            st.code(public_app_url)
 
         st.markdown("---")
         st.markdown("### Data Persistence")

@@ -1093,6 +1093,13 @@ def inject_styles() -> None:
             color: #64748b !important;
         }
 
+        div[data-testid="stTextInput"] label p,
+        div[data-testid="stTextInput"] label span {
+            color: #0b1324 !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+        }
+
         .stForm div[data-baseweb="input"] > div {
             background: #f8fbff;
             border: 1px solid #bfdbfe;
@@ -1183,6 +1190,18 @@ def inject_styles() -> None:
         .login-shell label {
             color: #0b1324 !important;
             font-weight: 700 !important;
+        }
+
+        div[data-testid="stTextInput"] input[aria-label="Enter dashboard PIN"] {
+            color: #0b1324 !important;
+            -webkit-text-fill-color: #0b1324 !important;
+            font-weight: 800 !important;
+            background: transparent !important;
+        }
+
+        div[data-testid="stTextInput"] input[aria-label="Enter dashboard PIN"]::placeholder {
+            color: #475569 !important;
+            opacity: 1 !important;
         }
 
         .login-shell div[data-baseweb="input"] > div {
@@ -2237,6 +2256,9 @@ def main() -> None:
             st.session_state["flash_message"] = {"ok": False, "message": rooms_amount_err}
             st.rerun()
         ok, msg = save_entry(rooms_date, rooms_revenue, rooms_note, "Rooms", settings)
+        if ok:
+            st.session_state["rooms_revenue_input"] = ""
+            st.session_state["rooms_note"] = ""
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
@@ -2278,6 +2300,9 @@ def main() -> None:
             st.session_state["flash_message"] = {"ok": False, "message": bar_amount_err}
             st.rerun()
         ok, msg = save_entry(bar_date, bar_revenue, bar_note, "Bar", settings)
+        if ok:
+            st.session_state["bar_revenue_input"] = ""
+            st.session_state["bar_note"] = ""
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 

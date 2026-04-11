@@ -17,6 +17,11 @@ import plotly.express as px
 import streamlit as st
 import streamlit.components.v1 as components
 
+try:
+    import psycopg
+except ImportError:  # pragma: no cover - optional at import time
+    psycopg = None
+
 
 APP_TITLE = "Serenity Stay Inn Dashboard"
 APP_DIR = Path(__file__).resolve().parent
@@ -50,6 +55,8 @@ TUNNEL_URL_REGEX = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 DAILY_SHEET = "daily_revenue"
 EXPENSE_SHEET = "non_fixed_expenses"
 SETTINGS_SHEET = "settings"
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DATABASE_URL)
 
 DEFAULT_SETTINGS = {
     "Initial_Balance": 369_308.0,
@@ -338,11 +345,80 @@ def stop_public_tunnel() -> Tuple[bool, str]:
     return True, "Public tunnel stopped."
 
 
+def _require_postgres_driver() -> None:
+    if psycopg is None:
+        raise RuntimeError(
+            "DATABASE_URL is set, but psycopg is not installed. "
+            "Run: pip install 'psycopg[binary]>=3.2.0'"
+        )
+
+
+def _pg_connect():
+    _require_postgres_driver()
+    return psycopg.connect(DATABASE_URL)
+
+
+def _initialize_postgres() -> None:
+    _require_postgres_driver()
+    with _pg_connect() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS daily_revenue (
+                    entry_date DATE NOT NULL,
+                    revenue_type TEXT NOT NULL,
+                    revenue DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    note TEXT NOT NULL DEFAULT '',
+                    month INTEGER NOT NULL,
+                    year INTEGER NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    CONSTRAINT uq_daily_revenue UNIQUE (entry_date, revenue_type)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS non_fixed_expenses (
+                    id BIGSERIAL PRIMARY KEY,
+                    entry_date DATE NOT NULL,
+                    expense DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    category TEXT NOT NULL DEFAULT 'Unexpected',
+                    note TEXT NOT NULL DEFAULT '',
+                    month INTEGER NOT NULL,
+                    year INTEGER NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    setting TEXT PRIMARY KEY,
+                    value DOUBLE PRECISION NOT NULL
+                )
+                """
+            )
+            for key, value in DEFAULT_SETTINGS.items():
+                cur.execute(
+                    """
+                    INSERT INTO settings (setting, value)
+                    VALUES (%s, %s)
+                    ON CONFLICT (setting) DO NOTHING
+                    """,
+                    (key, float(value)),
+                )
+        conn.commit()
+
+
 # -----------------------------
 # Excel data layer
 # -----------------------------
 def initialize_excel_file(path: Path = EXCEL_FILE) -> None:
-    """Create the local Excel database with required sheets if missing."""
+    """Initialize storage backend (Postgres when configured, else local Excel)."""
+    if USE_POSTGRES:
+        _initialize_postgres()
+        return
+
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
         return
@@ -405,6 +481,28 @@ def _normalize_daily_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def read_daily_data(path: Path = EXCEL_FILE) -> pd.DataFrame:
     initialize_excel_file(path)
+    if USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        entry_date AS "Date",
+                        revenue_type AS "Revenue_Type",
+                        revenue AS "Revenue",
+                        note AS "Note",
+                        month AS "Month",
+                        year AS "Year",
+                        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "Created_At"
+                    FROM daily_revenue
+                    ORDER BY entry_date, revenue_type
+                    """
+                )
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else DAILY_COLUMNS
+        df = pd.DataFrame(rows, columns=columns)
+        return _normalize_daily_dataframe(df)
+
     try:
         df = pd.read_excel(path, sheet_name=DAILY_SHEET, engine="openpyxl")
     except ValueError:
@@ -445,6 +543,28 @@ def _normalize_expense_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 
 def read_expense_data(path: Path = EXCEL_FILE) -> pd.DataFrame:
     initialize_excel_file(path)
+    if USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        entry_date AS "Date",
+                        expense AS "Expense",
+                        category AS "Category",
+                        note AS "Note",
+                        month AS "Month",
+                        year AS "Year",
+                        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "Created_At"
+                    FROM non_fixed_expenses
+                    ORDER BY entry_date, created_at
+                    """
+                )
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else EXPENSE_COLUMNS
+        df = pd.DataFrame(rows, columns=columns)
+        return _normalize_expense_dataframe(df)
+
     try:
         df = pd.read_excel(path, sheet_name=EXPENSE_SHEET, engine="openpyxl")
     except ValueError:
@@ -454,10 +574,18 @@ def read_expense_data(path: Path = EXCEL_FILE) -> pd.DataFrame:
 
 def read_settings(path: Path = EXCEL_FILE) -> Dict[str, float]:
     initialize_excel_file(path)
-    try:
-        df = pd.read_excel(path, sheet_name=SETTINGS_SHEET, engine="openpyxl")
-    except ValueError:
-        df = pd.DataFrame(columns=["Setting", "Value"])
+    if USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT setting AS \"Setting\", value AS \"Value\" FROM settings")
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else ["Setting", "Value"]
+        df = pd.DataFrame(rows, columns=columns)
+    else:
+        try:
+            df = pd.read_excel(path, sheet_name=SETTINGS_SHEET, engine="openpyxl")
+        except ValueError:
+            df = pd.DataFrame(columns=["Setting", "Value"])
 
     settings = DEFAULT_SETTINGS.copy()
 
@@ -484,6 +612,64 @@ def write_all_data(
     expense_df: pd.DataFrame | None = None,
     path: Path = EXCEL_FILE,
 ) -> None:
+    if USE_POSTGRES:
+        daily_df = _normalize_daily_dataframe(daily_df)
+        if expense_df is None:
+            expense_df = read_expense_data(path)
+        expense_df = _normalize_expense_dataframe(expense_df)
+
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM daily_revenue")
+                for _, row in daily_df.iterrows():
+                    cur.execute(
+                        """
+                        INSERT INTO daily_revenue
+                        (entry_date, revenue_type, revenue, note, month, year, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz)
+                        """,
+                        (
+                            row["Date"],
+                            normalize_revenue_type(row["Revenue_Type"]),
+                            safe_float(row["Revenue"]),
+                            str(row["Note"]).strip(),
+                            int(row["Month"]),
+                            int(row["Year"]),
+                            str(row["Created_At"]).strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+
+                cur.execute("DELETE FROM non_fixed_expenses")
+                for _, row in expense_df.iterrows():
+                    cur.execute(
+                        """
+                        INSERT INTO non_fixed_expenses
+                        (entry_date, expense, category, note, month, year, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s::timestamptz)
+                        """,
+                        (
+                            row["Date"],
+                            safe_float(row["Expense"]),
+                            str(row["Category"]).strip() or "Unexpected",
+                            str(row["Note"]).strip(),
+                            int(row["Month"]),
+                            int(row["Year"]),
+                            str(row["Created_At"]).strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+
+                for key, value in settings.items():
+                    cur.execute(
+                        """
+                        INSERT INTO settings (setting, value)
+                        VALUES (%s, %s)
+                        ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value
+                        """,
+                        (str(key), safe_float(value)),
+                    )
+            conn.commit()
+        return
+
     daily_df = _normalize_daily_dataframe(daily_df)
     if expense_df is None:
         expense_df = read_expense_data(path)
@@ -513,6 +699,41 @@ def save_entry(
     revenue_type: str,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        normalized_type = normalize_revenue_type(revenue_type)
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM daily_revenue
+                    WHERE entry_date = %s AND revenue_type = %s
+                    LIMIT 1
+                    """,
+                    (entry_date, normalized_type),
+                )
+                if cur.fetchone():
+                    return False, f"{normalized_type} revenue for this date already exists. Use Update Entry instead."
+
+                cur.execute(
+                    """
+                    INSERT INTO daily_revenue
+                    (entry_date, revenue_type, revenue, note, month, year, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    """,
+                    (
+                        entry_date,
+                        normalized_type,
+                        safe_float(revenue),
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                    ),
+                )
+            conn.commit()
+        return True, f"{normalized_type} revenue entry saved."
+
     df = read_daily_data()
     normalized_type = normalize_revenue_type(revenue_type)
     mask = (df["Date"] == entry_date) & (df["Revenue_Type"] == normalized_type)
@@ -551,6 +772,37 @@ def update_entry(
     revenue_type: str,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        normalized_type = normalize_revenue_type(revenue_type)
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE daily_revenue
+                    SET revenue = %s,
+                        note = %s,
+                        month = %s,
+                        year = %s
+                    WHERE entry_date = %s
+                      AND revenue_type = %s
+                    RETURNING entry_date
+                    """,
+                    (
+                        safe_float(revenue),
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                        entry_date,
+                        normalized_type,
+                    ),
+                )
+                updated = cur.fetchone()
+            conn.commit()
+        if not updated:
+            return False, f"No {normalized_type} revenue entry found for that date to update."
+        return True, f"{normalized_type} revenue entry updated successfully."
+
     df = read_daily_data()
     normalized_type = normalize_revenue_type(revenue_type)
     mask = (df["Date"] == entry_date) & (df["Revenue_Type"] == normalized_type)
@@ -571,6 +823,26 @@ def update_entry(
 
 
 def delete_entry(entry_date: date, revenue_type: str, settings: Dict[str, float]) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        normalized_type = normalize_revenue_type(revenue_type)
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM daily_revenue
+                    WHERE entry_date = %s
+                      AND revenue_type = %s
+                    RETURNING entry_date
+                    """,
+                    (entry_date, normalized_type),
+                )
+                deleted = cur.fetchone()
+            conn.commit()
+        if not deleted:
+            return False, f"No {normalized_type} revenue entry found for that date to delete."
+        return True, f"{normalized_type} revenue entry deleted successfully."
+
     df = read_daily_data()
     normalized_type = normalize_revenue_type(revenue_type)
     before_count = len(df)
@@ -590,6 +862,28 @@ def save_expense_entry(
     note: str,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO non_fixed_expenses
+                    (entry_date, expense, category, note, month, year, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                    """,
+                    (
+                        entry_date,
+                        safe_float(expense),
+                        category.strip() or "Unexpected",
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                    ),
+                )
+            conn.commit()
+        return True, "Non-fixed expense entry saved."
+
     expense_df = read_expense_data()
 
     new_row = pd.DataFrame(
@@ -623,6 +917,44 @@ def update_expense_entry(
     note: str,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    WITH latest AS (
+                        SELECT id
+                        FROM non_fixed_expenses
+                        WHERE entry_date = %s
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 1
+                    )
+                    UPDATE non_fixed_expenses e
+                    SET expense = %s,
+                        category = %s,
+                        note = %s,
+                        month = %s,
+                        year = %s
+                    FROM latest
+                    WHERE e.id = latest.id
+                    RETURNING e.id
+                    """,
+                    (
+                        entry_date,
+                        safe_float(expense),
+                        category.strip() or "Unexpected",
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                    ),
+                )
+                updated = cur.fetchone()
+            conn.commit()
+        if not updated:
+            return False, "No expense entry found for that date to update."
+        return True, "Latest expense entry for that date updated successfully."
+
     expense_df = read_expense_data()
     mask = expense_df["Date"] == entry_date
     if not mask.any():
@@ -643,6 +975,32 @@ def update_expense_entry(
 
 
 def delete_expense_entry(entry_date: date, settings: Dict[str, float]) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    WITH latest AS (
+                        SELECT id
+                        FROM non_fixed_expenses
+                        WHERE entry_date = %s
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 1
+                    )
+                    DELETE FROM non_fixed_expenses e
+                    USING latest
+                    WHERE e.id = latest.id
+                    RETURNING e.id
+                    """,
+                    (entry_date,),
+                )
+                deleted = cur.fetchone()
+            conn.commit()
+        if not deleted:
+            return False, "No expense entry found for that date to delete."
+        return True, "Latest expense entry for that date deleted successfully."
+
     expense_df = read_expense_data()
     mask = expense_df["Date"] == entry_date
     if not mask.any():
@@ -2000,7 +2358,10 @@ def main() -> None:
 
     st.title(APP_TITLE)
     st.caption("Local, offline revenue intelligence for Rooms + Bar operations.")
-    st.caption(f"Database file: {EXCEL_FILE}")
+    if USE_POSTGRES:
+        st.caption("Storage backend: PostgreSQL (persistent cloud database).")
+    else:
+        st.caption(f"Database file: {EXCEL_FILE}")
 
     if "view_unlocked" not in st.session_state:
         st.session_state["view_unlocked"] = False
@@ -2086,8 +2447,12 @@ def main() -> None:
 
         st.markdown("---")
         st.markdown("### Data Persistence")
-        st.caption("Entries are saved directly to Excel on every Save/Update/Delete and remain after restart.")
-        st.code(str(EXCEL_FILE))
+        if USE_POSTGRES:
+            st.caption("Entries are saved directly to PostgreSQL on every Save/Update/Delete.")
+            st.code("DATABASE_URL is active")
+        else:
+            st.caption("Entries are saved directly to Excel on every Save/Update/Delete and remain after restart.")
+            st.code(str(EXCEL_FILE))
 
         st.markdown("---")
         st.header("Filters")

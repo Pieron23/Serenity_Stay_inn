@@ -106,6 +106,27 @@ This project is ready for Render deployment with persistent storage:
 Your data remains persistent because the service uses an attached disk at `/var/data`.
 On first deploy, if `/var/data/guest_room_data.xlsx` is empty, the app can seed it from the bundled `guest_room_data.xlsx`.
 
+## No-Reset Storage (Free Option)
+
+This app now supports PostgreSQL storage automatically when `DATABASE_URL` is set.
+
+Recommended free providers:
+- Neon Postgres
+- Supabase Postgres
+
+### Render setup
+
+1. Create a free Postgres database (Neon/Supabase).
+2. Copy the database connection string.
+3. In Render service settings, add env var:
+   - `DATABASE_URL=<your-postgres-url>`
+4. Redeploy the service.
+
+When `DATABASE_URL` is set:
+- app uses PostgreSQL as primary storage
+- entries do not depend on local file persistence
+- Excel fallback is still used locally when `DATABASE_URL` is not configured
+
 ## Files
 
 - `app.py` - full dashboard application

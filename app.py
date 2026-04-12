@@ -117,6 +117,23 @@ def parse_money_input(raw_value: str) -> Tuple[bool, float, str]:
     return True, amount, ""
 
 
+def parse_expense_input(raw_value: str) -> Tuple[bool, float, str]:
+    raw_text = str(raw_value).strip()
+    if not raw_text:
+        return False, 0.0, "Enter an expense amount."
+
+    normalized = raw_text.replace(",", "").replace(" ", "")
+    try:
+        amount = float(normalized)
+    except ValueError:
+        return False, 0.0, "Expense must be a valid number (example: 12000)."
+
+    if amount < 0:
+        return False, 0.0, "Expense cannot be negative."
+
+    return True, amount, ""
+
+
 def verify_edit_pin(pin: str) -> bool:
     """Validate edit PIN using a hash so the raw PIN is not stored in source."""
     candidate = pin.strip()
@@ -1252,27 +1269,43 @@ def inject_styles() -> None:
         }
 
         .kpi-card {
-            background: var(--card);
-            border: 1px solid #dbeafe;
+            background: linear-gradient(165deg, #ffffff 0%, #f4f8ff 100%);
+            border: 1px solid #cfe1ff;
             border-radius: 16px;
             padding: 14px 16px 15px 16px;
-            min-height: 108px;
-            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            min-height: 152px;
+            height: 152px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow:
+                0 10px 24px rgba(15, 23, 42, 0.08),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            transition: transform 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        .kpi-card:hover {
+            transform: translateY(-2px);
+            box-shadow:
+                0 14px 26px rgba(29, 78, 216, 0.12),
+                inset 0 1px 0 rgba(255, 255, 255, 0.9);
         }
 
         .kpi-title {
             margin: 0;
-            color: var(--muted);
-            font-size: 0.85rem;
-            font-weight: 600;
+            color: #334155;
+            font-size: 0.92rem;
+            font-weight: 700;
             letter-spacing: 0.3px;
         }
 
         .kpi-value {
-            margin-top: 8px;
-            font-size: 1.25rem;
+            margin-top: 10px;
+            font-size: clamp(1.35rem, 1.85vw, 1.9rem);
             font-weight: 700;
             color: var(--ink);
+            line-height: 1.14;
+            word-break: break-word;
         }
 
         .kpi-good { color: var(--good); }
@@ -1343,12 +1376,16 @@ def inject_styles() -> None:
         }
 
         .perf-card {
-            background: rgba(255, 255, 255, 0.78);
-            border: 1px solid #bfdbfe;
+            background: linear-gradient(170deg, rgba(255, 255, 255, 0.96), rgba(240, 247, 255, 0.82));
+            border: 1px solid #cfe1ff;
             border-radius: 12px;
             padding: 12px 14px;
-            min-height: 112px;
-            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+            min-height: 170px;
+            height: 170px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 8px 18px rgba(30, 64, 175, 0.1);
         }
 
         .perf-title {
@@ -1360,10 +1397,10 @@ def inject_styles() -> None:
 
         .perf-value {
             color: #0f172a;
-            font-size: 2.05rem;
+            font-size: clamp(1.8rem, 2.8vw, 2.45rem);
             font-weight: 800;
             line-height: 1.15;
-            margin-bottom: 10px;
+            margin-bottom: 6px;
         }
 
         .perf-delta {
@@ -1402,9 +1439,9 @@ def inject_styles() -> None:
 
         .progress-track {
             width: 100%;
-            height: 14px;
-            background: #dbeafe;
-            border: 1px solid #bfdbfe;
+            height: 16px;
+            background: linear-gradient(90deg, #dbeafe, #c7ddfa);
+            border: 1px solid #a7c8f9;
             border-radius: 999px;
             overflow: hidden;
         }
@@ -1415,15 +1452,15 @@ def inject_styles() -> None:
         }
 
         .progress-fill-revenue {
-            background: linear-gradient(90deg, #f59e0b, #f97316);
+            background: linear-gradient(90deg, #2563eb, #38bdf8);
         }
 
         .progress-fill-balance {
-            background: linear-gradient(90deg, #2563eb, #3b82f6);
+            background: linear-gradient(90deg, #0ea5e9, #14b8a6);
         }
 
         .progress-fill-net {
-            background: linear-gradient(90deg, #0ea5e9, #22d3ee);
+            background: linear-gradient(90deg, #14b8a6, #22c55e);
         }
 
         div[data-baseweb="input"] > div,
@@ -2412,6 +2449,10 @@ def main() -> None:
         st.session_state["clear_rooms_inputs"] = False
     if "clear_bar_inputs" not in st.session_state:
         st.session_state["clear_bar_inputs"] = False
+    if "clear_expense_inputs" not in st.session_state:
+        st.session_state["clear_expense_inputs"] = False
+    if "expense_category_input" not in st.session_state:
+        st.session_state["expense_category_input"] = "Unexpected"
 
     flash_message = st.session_state.pop("flash_message", None)
     if flash_message:
@@ -2710,14 +2751,24 @@ def main() -> None:
     if refresh_rooms_pressed or refresh_bar_pressed:
         st.rerun()
 
+    if st.session_state.pop("clear_expense_inputs", False):
+        st.session_state["expense_amount_input"] = ""
+        st.session_state["expense_category_input"] = "Unexpected"
+        st.session_state["expense_note_input"] = ""
+
     st.markdown("### Overall Non-Fixed Cost Entry Form")
     st.caption("Use this section for all unexpected/non-fixed costs, including Bar expenses.")
     with st.form("expense_form", clear_on_submit=False):
         expense_cols = st.columns([1, 1, 1, 2])
         expense_date = expense_cols[0].date_input("Expense date", value=date.today())
-        expense_amount = expense_cols[1].number_input("Expense (RWF)", min_value=0.0, step=1000.0)
-        expense_category = expense_cols[2].text_input("Category", value="Unexpected")
-        expense_note = expense_cols[3].text_input("Expense note")
+        expense_amount_raw = expense_cols[1].text_input(
+            "Expense (RWF)",
+            value="",
+            placeholder="Type amount (example: 12000)",
+            key="expense_amount_input",
+        )
+        expense_category = expense_cols[2].text_input("Category", key="expense_category_input")
+        expense_note = expense_cols[3].text_input("Expense note", key="expense_note_input")
         st.caption(
             "Non-fixed expenses can be saved multiple times for the same date. Update/Delete applies to the latest entry for that date."
         )
@@ -2743,7 +2794,13 @@ def main() -> None:
         )
 
     if save_expense_pressed:
+        is_valid_expense, expense_amount, expense_amount_err = parse_expense_input(expense_amount_raw)
+        if not is_valid_expense:
+            st.session_state["flash_message"] = {"ok": False, "message": expense_amount_err}
+            st.rerun()
         ok, msg = save_expense_entry(expense_date, expense_amount, expense_category, expense_note, settings)
+        if ok:
+            st.session_state["clear_expense_inputs"] = True
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
@@ -2753,6 +2810,10 @@ def main() -> None:
                 "ok": False,
                 "message": "Update expense is locked. Enter correct PIN to enable editing.",
             }
+            st.rerun()
+        is_valid_expense, expense_amount, expense_amount_err = parse_expense_input(expense_amount_raw)
+        if not is_valid_expense:
+            st.session_state["flash_message"] = {"ok": False, "message": expense_amount_err}
             st.rerun()
         ok, msg = update_expense_entry(expense_date, expense_amount, expense_category, expense_note, settings)
         st.session_state["flash_message"] = {"ok": ok, "message": msg}

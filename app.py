@@ -1626,10 +1626,15 @@ def inject_styles() -> None:
         }
 
         .login-shell label {
-            color: #f8fafc !important;
+            color: #0f172a !important;
             font-weight: 700 !important;
             font-size: 0.9rem !important;
             letter-spacing: 0.02em;
+        }
+
+        .login-shell div[data-testid="stTextInput"] label {
+            display: flex !important;
+            justify-content: center !important;
         }
 
         div[data-testid="stTextInput"] input[aria-label="Enter dashboard PIN"] {
@@ -1648,14 +1653,16 @@ def inject_styles() -> None:
             opacity: 1 !important;
         }
 
-        .login-shell div[data-baseweb="input"] > div {
+        .login-shell div[data-baseweb="input"] > div,
+        .login-shell div[data-baseweb="base-input"] > div {
             background: rgba(255, 255, 255, 0.98) !important;
             border: 2px solid #bfdbfe !important;
             border-radius: 14px !important;
-            min-height: 56px !important;
+            min-height: 54px !important;
         }
 
-        .login-shell div[data-baseweb="input"] > div:focus-within {
+        .login-shell div[data-baseweb="input"] > div:focus-within,
+        .login-shell div[data-baseweb="base-input"] > div:focus-within {
             border-color: #93c5fd !important;
             box-shadow: none !important;
         }
@@ -1667,9 +1674,23 @@ def inject_styles() -> None:
             letter-spacing: 0.28em;
         }
 
+        .login-shell div[data-baseweb="input"] button,
+        .login-shell div[data-baseweb="base-input"] button {
+            background: transparent !important;
+            color: #64748b !important;
+            border: 0 !important;
+        }
+
+        .login-shell div[data-baseweb="base-input"] > div > div,
+        .login-shell div[data-baseweb="input"] > div > div {
+            background: transparent !important;
+        }
+
         .pin-caption {
-            color: #e2e8f0 !important;
-            font-weight: 500;
+            color: #334155 !important;
+            font-weight: 600;
+            text-align: center;
+            margin-top: 6px;
         }
 
         .login-hero {
@@ -1844,7 +1865,7 @@ def render_login_home() -> bool:
     with st.container():
         left, center, right = st.columns([1.0, 2.8, 1.0])
         with center:
-            pin_col, _ = st.columns([1.05, 2.6])
+            _, pin_col, _ = st.columns([1.15, 1.25, 1.15])
             with pin_col:
                 st.text_input(
                     "Enter dashboard PIN",

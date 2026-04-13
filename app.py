@@ -1963,8 +1963,8 @@ def render_kpi_card(title: str, value: str, tone: str = "") -> None:
     st.markdown(
         f"""
         <div class="kpi-card">
-            <p class="kpi-title">{title}</p>
-            <div class="kpi-value {tone_class}">{display_value}</div>
+            <p class="kpi-title" style="text-align:center;width:100%;">{title}</p>
+            <div class="kpi-value {tone_class}" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1990,8 +1990,8 @@ def render_perf_card(title: str, value: str, delta: float | None = None) -> None
     st.markdown(
         f"""
         <div class="perf-card">
-            <div class="perf-title">{title}</div>
-            <div class="perf-value">{display_value}</div>
+            <div class="perf-title" style="text-align:center;width:100%;">{title}</div>
+            <div class="perf-value" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
             {delta_html}
         </div>
         """,

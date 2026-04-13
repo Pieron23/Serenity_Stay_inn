@@ -1466,6 +1466,19 @@ def inject_styles() -> None:
             background: linear-gradient(90deg, #14b8a6, #22c55e);
         }
 
+        /* Remove default outer BaseWeb frame to avoid double/black rectangle. */
+        div[data-baseweb="input"],
+        div[data-baseweb="base-input"],
+        div[data-baseweb="input"]::before,
+        div[data-baseweb="base-input"]::before,
+        div[data-baseweb="input"]::after,
+        div[data-baseweb="base-input"]::after {
+            border: 0 !important;
+            outline: 0 !important;
+            box-shadow: none !important;
+            background: transparent !important;
+        }
+
         div[data-baseweb="input"] > div,
         div[data-baseweb="base-input"] > div {
             background: #ffffff !important;

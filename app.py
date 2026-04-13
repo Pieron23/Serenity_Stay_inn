@@ -1281,6 +1281,8 @@ def inject_styles() -> None:
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            align-items: center;
+            text-align: center;
             box-shadow:
                 0 10px 24px rgba(15, 23, 42, 0.08),
                 inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -1300,6 +1302,8 @@ def inject_styles() -> None:
             font-size: 0.92rem;
             font-weight: 700;
             letter-spacing: 0.3px;
+            text-align: center;
+            width: 100%;
         }
 
         .kpi-value {
@@ -1308,7 +1312,11 @@ def inject_styles() -> None:
             font-weight: 700;
             color: var(--ink);
             line-height: 1.14;
-            word-break: break-word;
+            text-align: center;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .kpi-good { color: var(--good); }
@@ -1388,6 +1396,8 @@ def inject_styles() -> None:
             display: flex;
             flex-direction: column;
             justify-content: space-between;
+            align-items: center;
+            text-align: center;
             box-shadow: 0 8px 18px rgba(30, 64, 175, 0.1);
         }
 
@@ -1396,14 +1406,21 @@ def inject_styles() -> None:
             font-size: 0.92rem;
             font-weight: 700;
             margin-bottom: 8px;
+            text-align: center;
+            width: 100%;
         }
 
         .perf-value {
             color: #0f172a;
-            font-size: clamp(1.8rem, 2.8vw, 2.45rem);
+            font-size: clamp(1.7rem, 2.35vw, 2.25rem);
             font-weight: 800;
             line-height: 1.15;
             margin-bottom: 6px;
+            text-align: center;
+            width: 100%;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .perf-delta {
@@ -1412,6 +1429,7 @@ def inject_styles() -> None:
             border-radius: 999px;
             font-size: 0.95rem;
             font-weight: 700;
+            white-space: nowrap;
         }
 
         .perf-delta-positive {
@@ -1941,11 +1959,12 @@ def render_login_home() -> bool:
 
 def render_kpi_card(title: str, value: str, tone: str = "") -> None:
     tone_class = f"kpi-{tone}" if tone else ""
+    display_value = str(value).replace(" RWF", "&nbsp;RWF")
     st.markdown(
         f"""
         <div class="kpi-card">
             <p class="kpi-title">{title}</p>
-            <div class="kpi-value {tone_class}">{value}</div>
+            <div class="kpi-value {tone_class}">{display_value}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1953,6 +1972,7 @@ def render_kpi_card(title: str, value: str, tone: str = "") -> None:
 
 
 def render_perf_card(title: str, value: str, delta: float | None = None) -> None:
+    display_value = str(value).replace(" RWF", "&nbsp;RWF")
     delta_html = ""
     if delta is not None:
         if delta > 0:
@@ -1964,13 +1984,14 @@ def render_perf_card(title: str, value: str, delta: float | None = None) -> None
         else:
             delta_class = "perf-delta-neutral"
             delta_text = format_rwf(0.0)
+        delta_text = delta_text.replace(" RWF", "&nbsp;RWF")
         delta_html = f'<span class="perf-delta {delta_class}">{delta_text}</span>'
 
     st.markdown(
         f"""
         <div class="perf-card">
             <div class="perf-title">{title}</div>
-            <div class="perf-value">{value}</div>
+            <div class="perf-value">{display_value}</div>
             {delta_html}
         </div>
         """,

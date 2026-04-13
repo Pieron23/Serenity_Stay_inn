@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import base64
 from calendar import month_name, monthrange
 from datetime import date, datetime, timedelta
 import hashlib
@@ -25,6 +26,7 @@ except ImportError:  # pragma: no cover - optional at import time
 
 APP_TITLE = "Serenity Stay Inn Dashboard"
 APP_DIR = Path(__file__).resolve().parent
+LOGIN_BG_FILE = APP_DIR / "assets" / "login_background.jpg"
 
 
 def _resolve_data_dir() -> Path:
@@ -1253,6 +1255,7 @@ def inject_styles() -> None:
             --orange-1: #f59e0b;
             --orange-2: #ea580c;
             --orange-3: #c2410c;
+            --login-bg-image: linear-gradient(145deg, #c5d8ea 0%, #e2edf8 60%, #f6f1eb 100%);
         }
 
         .stApp {
@@ -1468,9 +1471,7 @@ def inject_styles() -> None:
             background: #ffffff !important;
             border: 2px solid #bfdbfe !important;
             border-radius: 14px !important;
-            box-shadow:
-                inset 0 1px 0 rgba(255, 255, 255, 0.9),
-                0 6px 14px rgba(15, 23, 42, 0.06);
+            box-shadow: none !important;
             transition: all 0.16s ease;
         }
 
@@ -1482,9 +1483,7 @@ def inject_styles() -> None:
         div[data-baseweb="input"] > div:focus-within,
         div[data-baseweb="base-input"] > div:focus-within {
             border-color: #2563eb !important;
-            box-shadow:
-                0 0 0 3px rgba(37, 99, 235, 0.2),
-                0 10px 20px rgba(37, 99, 235, 0.1) !important;
+            box-shadow: none !important;
         }
 
         div[data-baseweb="input"] input,
@@ -1513,23 +1512,25 @@ def inject_styles() -> None:
             border: 1px solid #bfdbfe;
             border-radius: 16px;
             padding: 12px 12px 14px 12px;
-            box-shadow: 0 10px 20px rgba(29, 78, 216, 0.08);
+            box-shadow: none;
+            min-height: 338px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
 
         .stForm div[data-baseweb="input"] > div,
         .stForm div[data-baseweb="base-input"] > div {
             background: #ffffff !important;
-            border: 2px solid #93c5fd !important;
+            border: 1px solid #93c5fd !important;
             border-radius: 12px !important;
-            box-shadow: 0 6px 14px rgba(37, 99, 235, 0.1) !important;
+            box-shadow: none !important;
         }
 
         .stForm div[data-baseweb="input"] > div:focus-within,
         .stForm div[data-baseweb="base-input"] > div:focus-within {
             border-color: #1d4ed8 !important;
-            box-shadow:
-                0 0 0 3px rgba(37, 99, 235, 0.18),
-                0 10px 18px rgba(249, 115, 22, 0.12) !important;
+            box-shadow: none !important;
         }
 
         .stForm div[data-baseweb="input"] input,
@@ -1567,7 +1568,7 @@ def inject_styles() -> None:
             transition: all 0.18s ease;
             color: #0b2f57 !important;
             background: linear-gradient(135deg, #bae6fd, #7dd3fc) !important;
-            box-shadow: 0 8px 16px rgba(37, 99, 235, 0.2);
+            box-shadow: none;
         }
 
         [data-testid="stFormSubmitButton"] button p,
@@ -1580,7 +1581,7 @@ def inject_styles() -> None:
         [data-testid="stFormSubmitButton"] button:hover {
             transform: translateY(-1px);
             background: linear-gradient(135deg, #93c5fd, #60a5fa) !important;
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.28);
+            box-shadow: none;
         }
 
         [data-testid="stFormSubmitButton"] button:active {
@@ -1620,71 +1621,86 @@ def inject_styles() -> None:
         }
 
         .login-shell {
-            max-width: 560px;
-            margin: 2rem auto 0.5rem auto;
+            max-width: 720px;
+            margin: 1.6rem auto 0.4rem auto;
         }
 
         .login-shell label {
-            color: #0b1324 !important;
+            color: #f8fafc !important;
             font-weight: 700 !important;
+            font-size: 0.9rem !important;
+            letter-spacing: 0.02em;
         }
 
         div[data-testid="stTextInput"] input[aria-label="Enter dashboard PIN"] {
-            color: #0b1324 !important;
-            -webkit-text-fill-color: #0b1324 !important;
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
             font-weight: 800 !important;
             background: transparent !important;
+            letter-spacing: 0.38em;
+            font-size: 1.3rem !important;
+            text-align: center;
+            padding-left: 0.42em !important;
         }
 
         div[data-testid="stTextInput"] input[aria-label="Enter dashboard PIN"]::placeholder {
-            color: #475569 !important;
+            color: #94a3b8 !important;
             opacity: 1 !important;
         }
 
         .login-shell div[data-baseweb="input"] > div {
-            background: #ffffff !important;
-            border: 2px solid #60a5fa !important;
-            border-radius: 12px !important;
+            background: rgba(255, 255, 255, 0.98) !important;
+            border: 2px solid #bfdbfe !important;
+            border-radius: 14px !important;
+            min-height: 56px !important;
         }
 
         .login-shell div[data-baseweb="input"] > div:focus-within {
-            border-color: #2563eb !important;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.22) !important;
+            border-color: #93c5fd !important;
+            box-shadow: none !important;
         }
 
         .login-shell input[type="password"] {
-            color: #0b1324 !important;
-            -webkit-text-fill-color: #0b1324 !important;
+            color: #0f172a !important;
+            -webkit-text-fill-color: #0f172a !important;
             font-weight: 700 !important;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.28em;
+        }
+
+        .pin-caption {
+            color: #e2e8f0 !important;
+            font-weight: 500;
         }
 
         .login-hero {
             position: relative;
             overflow: hidden;
-            border-radius: 18px;
-            padding: 28px 24px;
+            border-radius: 20px;
+            padding: 30px 26px 28px 26px;
             background:
-                radial-gradient(circle at 15% 20%, rgba(56, 189, 248, 0.18), transparent 45%),
-                radial-gradient(circle at 85% 85%, rgba(251, 146, 60, 0.16), transparent 42%),
-                linear-gradient(145deg, #ffffff 0%, #f0f9ff 45%, #eff6ff 100%);
-            border: 1px solid #bfdbfe;
-            box-shadow: 0 20px 36px rgba(30, 64, 175, 0.18);
+                linear-gradient(120deg, rgba(15, 23, 42, 0.54), rgba(15, 23, 42, 0.34)),
+                var(--login-bg-image);
+            background-size: cover;
+            background-position: center;
+            border: 1px solid rgba(191, 219, 254, 0.58);
+            box-shadow: 0 24px 44px rgba(15, 23, 42, 0.24);
         }
 
         .login-title {
             margin: 0;
-            color: #0b1324;
-            font-size: 2.05rem;
+            color: #f8fafc;
+            font-size: 2.25rem;
             line-height: 1.15;
             font-weight: 800;
+            text-shadow: 0 3px 10px rgba(15, 23, 42, 0.32);
         }
 
         .login-subtitle {
-            margin-top: 8px;
-            color: #334155;
-            font-size: 1rem;
+            margin-top: 10px;
+            color: #e2e8f0;
+            font-size: 1.08rem;
             font-weight: 600;
+            text-shadow: 0 2px 8px rgba(15, 23, 42, 0.28);
         }
 
         .login-badge {
@@ -1692,33 +1708,34 @@ def inject_styles() -> None:
             align-items: center;
             gap: 8px;
             margin-top: 14px;
-            padding: 7px 12px;
+            padding: 8px 12px;
             border-radius: 999px;
-            background: #dbeafe;
-            color: #1e3a8a;
-            font-size: 0.88rem;
+            background: rgba(255, 255, 255, 0.16);
+            color: #f8fafc;
+            font-size: 0.9rem;
             font-weight: 700;
-            border: 1px solid #93c5fd;
+            border: 1px solid rgba(191, 219, 254, 0.65);
+            backdrop-filter: blur(1px);
         }
 
         .login-pulse-dot {
             width: 9px;
             height: 9px;
             border-radius: 999px;
-            background: #f97316;
-            box-shadow: 0 0 0 rgba(249, 115, 22, 0.5);
+            background: #fbbf24;
+            box-shadow: 0 0 0 rgba(251, 191, 36, 0.52);
             animation: pulseDot 1.7s infinite;
         }
 
         @keyframes pulseDot {
             0% {
-                box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.55);
+                box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.55);
             }
             80% {
-                box-shadow: 0 0 0 14px rgba(249, 115, 22, 0.0);
+                box-shadow: 0 0 0 14px rgba(251, 191, 36, 0.0);
             }
             100% {
-                box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.0);
+                box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.0);
             }
         }
 
@@ -1726,6 +1743,27 @@ def inject_styles() -> None:
             color: var(--muted);
             font-size: 0.86rem;
         }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def inject_login_background() -> None:
+    if not LOGIN_BG_FILE.exists():
+        return
+
+    try:
+        encoded = base64.b64encode(LOGIN_BG_FILE.read_bytes()).decode("utf-8")
+    except Exception:
+        return
+
+    st.markdown(
+        f"""
+        <style>
+        :root {{
+            --login-bg-image: url("data:image/jpeg;base64,{encoded}");
+        }}
         </style>
         """,
         unsafe_allow_html=True,
@@ -1804,18 +1842,25 @@ def render_login_home() -> bool:
     )
 
     with st.container():
-        left, center, right = st.columns([1.2, 2.2, 1.2])
+        left, center, right = st.columns([1.0, 2.8, 1.0])
         with center:
-            st.text_input(
-                "Enter dashboard PIN",
-                type="password",
-                key="login_pin_input",
-                on_change=auto_unlock_login,
-            )
+            pin_col, _ = st.columns([1.05, 2.6])
+            with pin_col:
+                st.text_input(
+                    "Enter dashboard PIN",
+                    type="password",
+                    key="login_pin_input",
+                    on_change=auto_unlock_login,
+                    max_chars=4,
+                    placeholder="••••",
+                )
             if st.session_state.get("login_pin_invalid", False):
                 st.error("Incorrect PIN. Please try again.")
 
-            st.caption("Only authorized users can open business metrics and entry forms.")
+            st.markdown(
+                '<div class="pin-caption">Only authorized users can open business metrics and entry forms.</div>',
+                unsafe_allow_html=True,
+            )
 
     return False
 
@@ -2423,6 +2468,7 @@ def render_dashboard(
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
     inject_styles()
+    inject_login_background()
     inject_auto_pin_blur_script()
 
     if not render_login_home():
@@ -2480,21 +2526,6 @@ def main() -> None:
             st.rerun()
 
         st.markdown("---")
-        public_app_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
-        if public_app_url:
-            st.markdown("### App Link")
-            st.code(public_app_url)
-
-        st.markdown("---")
-        st.markdown("### Data Persistence")
-        if USE_POSTGRES:
-            st.caption("Entries are saved directly to PostgreSQL on every Save/Update/Delete.")
-            st.code("DATABASE_URL is active")
-        else:
-            st.caption("Entries are saved directly to Excel on every Save/Update/Delete and remain after restart.")
-            st.code(str(EXCEL_FILE))
-
-        st.markdown("---")
         st.header("Filters")
 
         revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
@@ -2525,6 +2556,21 @@ def main() -> None:
 
         if start_date > end_date:
             st.warning("Start date cannot be later than end date.")
+
+        st.markdown("---")
+        public_app_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+        if public_app_url:
+            st.markdown("### App Link")
+            st.code(public_app_url)
+
+        st.markdown("---")
+        st.markdown("### Data Persistence")
+        if USE_POSTGRES:
+            st.caption("Entries are saved directly to PostgreSQL on every Save/Update/Delete.")
+            st.code("DATABASE_URL is active")
+        else:
+            st.caption("Entries are saved directly to Excel on every Save/Update/Delete and remain after restart.")
+            st.code(str(EXCEL_FILE))
 
         st.markdown("---")
         st.markdown("**Fixed Monthly Costs**")
@@ -2871,4 +2917,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 

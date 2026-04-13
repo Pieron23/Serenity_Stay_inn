@@ -1393,10 +1393,10 @@ def inject_styles() -> None:
             padding: 12px 14px;
             min-height: 170px;
             height: 170px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
             align-items: center;
+            justify-items: center;
             text-align: center;
             box-shadow: 0 8px 18px rgba(30, 64, 175, 0.1);
         }
@@ -1415,12 +1415,20 @@ def inject_styles() -> None:
             font-size: clamp(1.7rem, 2.35vw, 2.25rem);
             font-weight: 800;
             line-height: 1.15;
-            margin-bottom: 6px;
+            margin: 0;
             text-align: center;
             width: 100%;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .perf-delta-slot {
+            width: 100%;
+            min-height: 36px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .perf-delta {
@@ -1430,6 +1438,10 @@ def inject_styles() -> None:
             font-size: 0.95rem;
             font-weight: 700;
             white-space: nowrap;
+        }
+
+        .perf-delta-empty {
+            visibility: hidden;
         }
 
         .perf-delta-positive {
@@ -1986,13 +1998,15 @@ def render_perf_card(title: str, value: str, delta: float | None = None) -> None
             delta_text = format_rwf(0.0)
         delta_text = delta_text.replace(" RWF", "&nbsp;RWF")
         delta_html = f'<span class="perf-delta {delta_class}">{delta_text}</span>'
+    else:
+        delta_html = '<span class="perf-delta perf-delta-empty">0&nbsp;RWF</span>'
 
     st.markdown(
         f"""
         <div class="perf-card">
             <div class="perf-title" style="text-align:center;width:100%;">{title}</div>
             <div class="perf-value" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
-            {delta_html}
+            <div class="perf-delta-slot">{delta_html}</div>
         </div>
         """,
         unsafe_allow_html=True,

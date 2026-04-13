@@ -1498,6 +1498,46 @@ def inject_styles() -> None:
             opacity: 1 !important;
         }
 
+        /* Hard reset for Streamlit/BaseWeb inner wrappers to avoid dark suffix backgrounds. */
+        div[data-testid="stTextInput"] div[data-baseweb="input"],
+        div[data-testid="stTextInput"] div[data-baseweb="base-input"],
+        div[data-testid="stNumberInput"] div[data-baseweb="input"],
+        div[data-testid="stNumberInput"] div[data-baseweb="base-input"] {
+            background: transparent !important;
+        }
+
+        div[data-testid="stTextInput"] div[data-baseweb="input"] > div,
+        div[data-testid="stTextInput"] div[data-baseweb="base-input"] > div,
+        div[data-testid="stNumberInput"] div[data-baseweb="input"] > div,
+        div[data-testid="stNumberInput"] div[data-baseweb="base-input"] > div {
+            background: #ffffff !important;
+        }
+
+        div[data-testid="stTextInput"] div[data-baseweb="input"] > div > div,
+        div[data-testid="stTextInput"] div[data-baseweb="base-input"] > div > div,
+        div[data-testid="stNumberInput"] div[data-baseweb="input"] > div > div,
+        div[data-testid="stNumberInput"] div[data-baseweb="base-input"] > div > div {
+            background: transparent !important;
+        }
+
+        div[data-testid="stTextInput"] div[data-baseweb="input"] > div > div:last-child,
+        div[data-testid="stTextInput"] div[data-baseweb="base-input"] > div > div:last-child,
+        div[data-testid="stNumberInput"] div[data-baseweb="input"] > div > div:last-child,
+        div[data-testid="stNumberInput"] div[data-baseweb="base-input"] > div > div:last-child {
+            background: #ffffff !important;
+            border-radius: 0 12px 12px 0 !important;
+        }
+
+        div[data-testid="stTextInput"] div[data-baseweb="input"] button,
+        div[data-testid="stTextInput"] div[data-baseweb="base-input"] button,
+        div[data-testid="stNumberInput"] div[data-baseweb="input"] button,
+        div[data-testid="stNumberInput"] div[data-baseweb="base-input"] button {
+            background: transparent !important;
+            box-shadow: none !important;
+            border: 0 !important;
+            color: #64748b !important;
+        }
+
         div[data-testid="stTextInput"] label p,
         div[data-testid="stTextInput"] label span,
         div[data-testid="stNumberInput"] label p,

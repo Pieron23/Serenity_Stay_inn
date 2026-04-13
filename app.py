@@ -1278,10 +1278,10 @@ def inject_styles() -> None:
             padding: 14px 16px 15px 16px;
             min-height: 152px;
             height: 152px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            display: grid;
+            grid-template-rows: 46px 1fr;
             align-items: center;
+            justify-items: center;
             text-align: center;
             box-shadow:
                 0 10px 24px rgba(15, 23, 42, 0.08),
@@ -1301,13 +1301,16 @@ def inject_styles() -> None:
             color: #334155;
             font-size: 0.92rem;
             font-weight: 700;
+            line-height: 1.2;
             letter-spacing: 0.3px;
             text-align: center;
             width: 100%;
+            max-height: 2.4em;
+            overflow: hidden;
         }
 
         .kpi-value {
-            margin-top: 10px;
+            margin-top: 0;
             font-size: clamp(1.35rem, 1.85vw, 1.9rem);
             font-weight: 700;
             color: var(--ink);
@@ -1317,6 +1320,14 @@ def inject_styles() -> None:
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+        }
+
+        .kpi-value-slot {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
 
         .kpi-good { color: var(--good); }
@@ -1956,7 +1967,7 @@ def render_login_home() -> bool:
                     key="login_pin_input",
                     on_change=auto_unlock_login,
                     max_chars=4,
-                    placeholder="••••",
+                    placeholder="****",
                 )
             if st.session_state.get("login_pin_invalid", False):
                 st.error("Incorrect PIN. Please try again.")
@@ -1976,7 +1987,9 @@ def render_kpi_card(title: str, value: str, tone: str = "") -> None:
         f"""
         <div class="kpi-card">
             <p class="kpi-title" style="text-align:center;width:100%;">{title}</p>
-            <div class="kpi-value {tone_class}" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
+            <div class="kpi-value-slot">
+                <div class="kpi-value {tone_class}" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3026,5 +3039,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
 
 

@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover - optional at import time
 
 
 APP_TITLE = "Serenity Stay Inn Dashboard"
+APP_VERSION_LABEL = "Admin settings update - Apr 27, 2026"
 APP_DIR = Path(__file__).resolve().parent
 LOGIN_BG_FILE = APP_DIR / "assets" / "login_background.jpg"
 
@@ -2746,6 +2747,7 @@ def main() -> None:
     all_expense_df = read_expense_data()
     st.title(APP_TITLE)
     st.caption("Local, offline revenue intelligence for Rooms + Bar operations.")
+    st.caption(APP_VERSION_LABEL)
     if USE_POSTGRES:
         st.caption("Storage backend: PostgreSQL (persistent cloud database).")
     else:

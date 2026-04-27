@@ -1293,10 +1293,10 @@ def inject_styles() -> None:
             border: 1px solid #dbe4f0;
             border-radius: 8px;
             padding: 12px 14px;
-            min-height: 136px;
-            height: 136px;
+            min-height: 142px;
+            height: 142px;
             display: grid;
-            grid-template-rows: 46px 1fr;
+            grid-template-rows: 42px 1fr;
             align-items: center;
             justify-items: center;
             text-align: center;
@@ -1325,15 +1325,21 @@ def inject_styles() -> None:
 
         .kpi-value {
             margin-top: 0;
-            font-size: clamp(1.35rem, 1.85vw, 1.9rem);
+            font-size: 1.42rem;
             font-weight: 700;
             color: var(--ink);
-            line-height: 1.14;
+            line-height: 1.18;
             text-align: center;
             width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: normal;
+            text-wrap: balance;
+        }
+
+        .kpi-value-long {
+            font-size: 1.15rem;
+            line-height: 1.22;
         }
 
         .kpi-value-slot {
@@ -1342,6 +1348,7 @@ def inject_styles() -> None:
             display: flex;
             justify-content: center;
             align-items: center;
+            overflow: hidden;
         }
 
         .kpi-good { color: var(--good); }
@@ -1416,8 +1423,8 @@ def inject_styles() -> None:
             border: 1px solid #dbe4f0;
             border-radius: 8px;
             padding: 12px 14px;
-            min-height: 142px;
-            height: 142px;
+            min-height: 138px;
+            height: 138px;
             display: grid;
             grid-template-rows: auto 1fr auto;
             align-items: center;
@@ -1437,15 +1444,20 @@ def inject_styles() -> None:
 
         .perf-value {
             color: #0f172a;
-            font-size: clamp(1.7rem, 2.35vw, 2.25rem);
+            font-size: 1.55rem;
             font-weight: 800;
             line-height: 1.15;
             margin: 0;
             text-align: center;
             width: 100%;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: break-word;
+            text-wrap: balance;
+        }
+
+        .perf-value-long {
+            font-size: 1.22rem;
+            line-height: 1.2;
         }
 
         .perf-delta-slot {
@@ -1462,7 +1474,8 @@ def inject_styles() -> None:
             border-radius: 999px;
             font-size: 0.95rem;
             font-weight: 700;
-            white-space: nowrap;
+            white-space: normal;
+            overflow-wrap: break-word;
         }
 
         .perf-delta-empty {
@@ -2044,13 +2057,14 @@ def render_login_home() -> bool:
 
 def render_kpi_card(title: str, value: str, tone: str = "") -> None:
     tone_class = f"kpi-{tone}" if tone else ""
-    display_value = str(value).replace(" RWF", "&nbsp;RWF")
+    display_value = str(value)
+    length_class = "kpi-value-long" if len(display_value) >= 18 else ""
     st.markdown(
         f"""
         <div class="kpi-card">
             <p class="kpi-title" style="text-align:center;width:100%;">{title}</p>
             <div class="kpi-value-slot">
-                <div class="kpi-value {tone_class}" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
+                <div class="kpi-value {tone_class} {length_class}">{display_value}</div>
             </div>
         </div>
         """,
@@ -2059,7 +2073,8 @@ def render_kpi_card(title: str, value: str, tone: str = "") -> None:
 
 
 def render_perf_card(title: str, value: str, delta: float | None = None) -> None:
-    display_value = str(value).replace(" RWF", "&nbsp;RWF")
+    display_value = str(value)
+    length_class = "perf-value-long" if len(display_value) >= 16 else ""
     delta_html = ""
     if delta is not None:
         if delta > 0:
@@ -2071,16 +2086,15 @@ def render_perf_card(title: str, value: str, delta: float | None = None) -> None
         else:
             delta_class = "perf-delta-neutral"
             delta_text = format_rwf(0.0)
-        delta_text = delta_text.replace(" RWF", "&nbsp;RWF")
         delta_html = f'<span class="perf-delta {delta_class}">{delta_text}</span>'
     else:
-        delta_html = '<span class="perf-delta perf-delta-empty">0&nbsp;RWF</span>'
+        delta_html = '<span class="perf-delta perf-delta-empty">0 RWF</span>'
 
     st.markdown(
         f"""
         <div class="perf-card">
             <div class="perf-title" style="text-align:center;width:100%;">{title}</div>
-            <div class="perf-value" style="display:flex;justify-content:center;align-items:center;width:100%;text-align:center;white-space:nowrap;">{display_value}</div>
+            <div class="perf-value {length_class}">{display_value}</div>
             <div class="perf-delta-slot">{delta_html}</div>
         </div>
         """,

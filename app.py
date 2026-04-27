@@ -25,7 +25,6 @@ except ImportError:  # pragma: no cover - optional at import time
 
 
 APP_TITLE = "Serenity Stay Inn Dashboard"
-APP_VERSION_LABEL = "Admin settings update - Apr 27, 2026"
 APP_DIR = Path(__file__).resolve().parent
 LOGIN_BG_FILE = APP_DIR / "assets" / "login_background.jpg"
 
@@ -181,12 +180,11 @@ def auto_unlock_sensitive_numbers() -> None:
         return
     if verify_edit_pin(candidate):
         st.session_state["view_unlocked"] = True
-        st.session_state["edit_unlocked"] = True
         st.session_state["sensitive_pin_invalid"] = False
         st.session_state["sensitive_pin_input"] = ""
         st.session_state["flash_message"] = {
             "ok": True,
-            "message": "Admin access unlocked.",
+            "message": "Protected numbers unlocked.",
         }
     else:
         st.session_state["sensitive_pin_invalid"] = True
@@ -1053,6 +1051,121 @@ def delete_expense_entry(entry_date: date, settings: Dict[str, float]) -> Tuple[
     return True, "Latest expense entry for that date deleted successfully."
 
 
+def expense_records_for_date(entry_date: date) -> pd.DataFrame:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        id AS "Record_ID",
+                        entry_date AS "Date",
+                        expense AS "Expense",
+                        category AS "Category",
+                        note AS "Note",
+                        month AS "Month",
+                        year AS "Year",
+                        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "Created_At"
+                    FROM non_fixed_expenses
+                    WHERE entry_date = %s
+                    ORDER BY created_at, id
+                    """,
+                    (entry_date,),
+                )
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else ["Record_ID", *EXPENSE_COLUMNS]
+        return pd.DataFrame(rows, columns=columns)
+
+    expense_df = read_expense_data()
+    if expense_df.empty:
+        return pd.DataFrame(columns=["Record_ID", *EXPENSE_COLUMNS])
+    records = expense_df[expense_df["Date"] == entry_date].copy()
+    records.insert(0, "Record_ID", records.index)
+    return records.reset_index(drop=True)
+
+
+def update_expense_record(
+    record_id: int,
+    entry_date: date,
+    expense: float,
+    category: str,
+    note: str,
+    settings: Dict[str, float],
+) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE non_fixed_expenses
+                    SET entry_date = %s,
+                        expense = %s,
+                        category = %s,
+                        note = %s,
+                        month = %s,
+                        year = %s
+                    WHERE id = %s
+                    RETURNING id
+                    """,
+                    (
+                        entry_date,
+                        safe_float(expense),
+                        category.strip() or "Unexpected",
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                        int(record_id),
+                    ),
+                )
+                updated = cur.fetchone()
+            conn.commit()
+        if not updated:
+            return False, "Expense entry was not found."
+        return True, "Expense entry updated."
+
+    expense_df = read_expense_data()
+    target_idx = int(record_id)
+    if target_idx not in expense_df.index:
+        return False, "Expense entry was not found."
+
+    created_at = expense_df.loc[target_idx, "Created_At"]
+    expense_df.loc[target_idx, "Date"] = entry_date
+    expense_df.loc[target_idx, "Expense"] = safe_float(expense)
+    expense_df.loc[target_idx, "Category"] = category.strip() or "Unexpected"
+    expense_df.loc[target_idx, "Note"] = note.strip()
+    expense_df.loc[target_idx, "Month"] = entry_date.month
+    expense_df.loc[target_idx, "Year"] = entry_date.year
+    expense_df.loc[target_idx, "Created_At"] = created_at
+    write_all_data(read_daily_data(), settings, expense_df=expense_df)
+    return True, "Expense entry updated."
+
+
+def delete_expense_record(record_id: int, settings: Dict[str, float]) -> Tuple[bool, str]:
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM non_fixed_expenses WHERE id = %s RETURNING id",
+                    (int(record_id),),
+                )
+                deleted = cur.fetchone()
+            conn.commit()
+        if not deleted:
+            return False, "Expense entry was not found."
+        return True, "Expense entry deleted."
+
+    expense_df = read_expense_data()
+    target_idx = int(record_id)
+    if target_idx not in expense_df.index:
+        return False, "Expense entry was not found."
+    expense_df = expense_df.drop(index=target_idx).reset_index(drop=True)
+    write_all_data(read_daily_data(), settings, expense_df=expense_df)
+    return True, "Expense entry deleted."
+
+
 # -----------------------------
 # Business calculations
 # -----------------------------
@@ -1783,6 +1896,37 @@ def inject_styles() -> None:
             font-size: 1.15rem;
         }
 
+        .review-summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin: 8px 0 14px 0;
+        }
+
+        .review-summary > div {
+            background: #ffffff;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
+            padding: 12px 14px;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+        }
+
+        .review-summary span {
+            display: block;
+            color: #64748b;
+            font-size: 0.86rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .review-summary strong {
+            display: block;
+            color: #0f172a;
+            font-size: 1.1rem;
+            line-height: 1.2;
+            overflow-wrap: break-word;
+        }
+
         [data-testid="stButton"] button:hover,
         [data-testid="stPopover"] button:hover {
             color: #0b2f57 !important;
@@ -1972,6 +2116,7 @@ def inject_auto_pin_blur_script() -> None:
 
           const pinLabels = new Set([
             "Enter dashboard PIN",
+            "Enter PIN to view protected numbers",
             "Enter admin PIN"
           ]);
 
@@ -2132,24 +2277,23 @@ def render_sensitive_numbers_access() -> bool:
         st.session_state["sensitive_pin_invalid"] = False
 
     access_col_1, access_col_2 = st.columns([4, 1])
-    access_col_1.markdown("#### Admin Access")
+    access_col_1.markdown("#### Protected Numbers")
     access_col_1.caption(
-        "Unlock protected numbers, revenue and expense edits, and fixed-cost settings."
+        "Unlock balance, fixed-cost, profit/loss, and break-even figures."
     )
 
     if st.session_state["view_unlocked"]:
-        access_col_1.markdown('<div class="admin-pill">Admin mode active</div>', unsafe_allow_html=True)
-        if access_col_2.button("Lock admin", use_container_width=True, key="hide_sensitive_btn"):
+        access_col_1.markdown('<div class="admin-pill">Numbers visible</div>', unsafe_allow_html=True)
+        if access_col_2.button("Hide numbers", use_container_width=True, key="hide_sensitive_btn"):
             st.session_state["view_unlocked"] = False
-            st.session_state["edit_unlocked"] = False
             st.session_state["sensitive_pin_input"] = ""
             st.session_state["sensitive_pin_invalid"] = False
-            st.session_state["flash_message"] = {"ok": True, "message": "Admin access locked."}
+            st.session_state["flash_message"] = {"ok": True, "message": "Protected numbers hidden."}
             st.rerun()
     else:
-        with access_col_2.popover("Unlock admin", use_container_width=True):
+        with access_col_2.popover("See numbers", use_container_width=True):
             st.text_input(
-                "Enter admin PIN",
+                "Enter PIN to view protected numbers",
                 type="password",
                 key="sensitive_pin_input",
                 on_change=auto_unlock_sensitive_numbers,
@@ -2160,16 +2304,51 @@ def render_sensitive_numbers_access() -> bool:
     return bool(st.session_state["view_unlocked"])
 
 
+def render_admin_access() -> bool:
+    if "edit_unlocked" not in st.session_state:
+        st.session_state["edit_unlocked"] = False
+    if "edit_pin_invalid" not in st.session_state:
+        st.session_state["edit_pin_invalid"] = False
+
+    admin_col_1, admin_col_2 = st.columns([4, 1])
+    admin_col_1.markdown("#### Admin Editing")
+    admin_col_1.caption(
+        "Unlock fixed-cost settings and exact entry correction for mistaken data."
+    )
+
+    if st.session_state["edit_unlocked"]:
+        admin_col_1.markdown('<div class="admin-pill">Admin editing active</div>', unsafe_allow_html=True)
+        if admin_col_2.button("Lock admin", use_container_width=True, key="lock_admin_btn"):
+            st.session_state["edit_unlocked"] = False
+            st.session_state["edit_pin_input"] = ""
+            st.session_state["edit_pin_invalid"] = False
+            st.session_state["flash_message"] = {"ok": True, "message": "Admin editing locked."}
+            st.rerun()
+    else:
+        with admin_col_2.popover("Unlock admin", use_container_width=True):
+            st.text_input(
+                "Enter admin PIN",
+                type="password",
+                key="edit_pin_input",
+                on_change=auto_unlock_edit_mode,
+            )
+            if st.session_state.get("edit_pin_invalid", False):
+                st.caption("Incorrect PIN.")
+
+    return bool(st.session_state["edit_unlocked"])
+
+
 def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None:
     st.markdown("### Admin Settings")
     if not is_unlocked:
-        st.info("Unlock admin access to adjust fixed monthly costs and protected balance settings.")
+        st.info("Unlock admin editing to adjust fixed monthly costs and protected balance settings.")
         return
 
     with st.form("admin_settings_form", clear_on_submit=False):
-        st.caption("These settings update dashboard calculations only after Save settings.")
-        setting_cols = st.columns(5)
-        initial_balance = setting_cols[0].number_input(
+        st.caption("Set a cost to 0 to remove it. Changes update dashboard calculations only after Save settings.")
+        top_cols = st.columns(3)
+        lower_cols = st.columns(2)
+        initial_balance = top_cols[0].number_input(
             "Initial balance",
             min_value=0.0,
             value=safe_float(settings["Initial_Balance"]),
@@ -2177,7 +2356,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_initial_balance",
         )
-        house_rent = setting_cols[1].number_input(
+        house_rent = top_cols[1].number_input(
             "House rent",
             min_value=0.0,
             value=safe_float(settings["House_Rent"]),
@@ -2185,7 +2364,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_house_rent",
         )
-        labor = setting_cols[2].number_input(
+        labor = top_cols[2].number_input(
             "Labor",
             min_value=0.0,
             value=safe_float(settings["Labor"]),
@@ -2193,7 +2372,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_labor",
         )
-        water_bill = setting_cols[3].number_input(
+        water_bill = lower_cols[0].number_input(
             "Water bill",
             min_value=0.0,
             value=safe_float(settings["Water_Bill"]),
@@ -2201,7 +2380,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_water_bill",
         )
-        electricity = setting_cols[4].number_input(
+        electricity = lower_cols[1].number_input(
             "Electricity",
             min_value=0.0,
             value=safe_float(settings["Electricity"]),
@@ -2238,6 +2417,134 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         )
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
+
+
+def render_admin_day_review(
+    settings: Dict[str, float],
+    all_revenue_df: pd.DataFrame,
+    is_unlocked: bool,
+) -> None:
+    st.markdown("### Admin Entry Review")
+    review_date = st.date_input("Review date", value=date.today(), key="admin_review_date")
+
+    if not is_unlocked:
+        st.info("Unlock admin editing to view, update, or delete entries from this date.")
+        return
+
+    day_revenue_df = (
+        all_revenue_df[all_revenue_df["Date"] == review_date].sort_values("Revenue_Type")
+        if not all_revenue_df.empty
+        else pd.DataFrame(columns=DAILY_COLUMNS)
+    )
+    day_expense_df = expense_records_for_date(review_date)
+
+    revenue_total = safe_float(day_revenue_df["Revenue"].sum()) if not day_revenue_df.empty else 0.0
+    expense_total = safe_float(day_expense_df["Expense"].sum()) if not day_expense_df.empty else 0.0
+    st.markdown(
+        f"""
+        <div class="review-summary">
+            <div><span>Revenue</span><strong>{format_rwf(revenue_total)}</strong></div>
+            <div><span>Non-fixed expenses</span><strong>{format_rwf(expense_total)}</strong></div>
+            <div><span>Net day movement</span><strong>{format_rwf(revenue_total - expense_total)}</strong></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    review_tabs = st.tabs(["Revenue entries", "Expense entries"])
+
+    with review_tabs[0]:
+        if day_revenue_df.empty:
+            st.info("No revenue entries found for this date.")
+        else:
+            for _, row in day_revenue_df.iterrows():
+                revenue_type = normalize_revenue_type(str(row["Revenue_Type"]))
+                form_key = f"admin_revenue_{review_date}_{revenue_type}"
+                with st.form(form_key, clear_on_submit=False):
+                    st.markdown(f"#### {revenue_type}")
+                    cols = st.columns([1, 1, 2])
+                    updated_amount = cols[0].number_input(
+                        "Revenue",
+                        min_value=0.0,
+                        value=safe_float(row["Revenue"]),
+                        step=1000.0,
+                        format="%.0f",
+                        key=f"{form_key}_amount",
+                    )
+                    cols[1].text_input(
+                        "Revenue stream",
+                        value=revenue_type,
+                        disabled=True,
+                        key=f"{form_key}_type",
+                    )
+                    updated_note = cols[2].text_input(
+                        "Note",
+                        value=str(row["Note"]),
+                        key=f"{form_key}_note",
+                    )
+                    action_cols = st.columns([1, 1, 4])
+                    update_pressed = action_cols[0].form_submit_button("Update", type="primary")
+                    delete_pressed = action_cols[1].form_submit_button("Delete")
+
+                if update_pressed:
+                    ok, msg = update_entry(review_date, updated_amount, updated_note, revenue_type, settings)
+                    st.session_state["flash_message"] = {"ok": ok, "message": msg}
+                    st.rerun()
+                if delete_pressed:
+                    ok, msg = delete_entry(review_date, revenue_type, settings)
+                    st.session_state["flash_message"] = {"ok": ok, "message": msg}
+                    st.rerun()
+
+    with review_tabs[1]:
+        if day_expense_df.empty:
+            st.info("No non-fixed expense entries found for this date.")
+        else:
+            for position, row in day_expense_df.reset_index(drop=True).iterrows():
+                record_id = int(row["Record_ID"])
+                form_key = f"admin_expense_{review_date}_{record_id}_{position}"
+                with st.form(form_key, clear_on_submit=False):
+                    st.markdown(f"#### Expense {position + 1}")
+                    cols = st.columns([1, 1, 2])
+                    updated_expense = cols[0].number_input(
+                        "Expense",
+                        min_value=0.0,
+                        value=safe_float(row["Expense"]),
+                        step=1000.0,
+                        format="%.0f",
+                        key=f"{form_key}_amount",
+                    )
+                    updated_category = cols[1].text_input(
+                        "Category",
+                        value=str(row["Category"]) or "Unexpected",
+                        key=f"{form_key}_category",
+                    )
+                    updated_note = cols[2].text_input(
+                        "Note",
+                        value=str(row["Note"]),
+                        key=f"{form_key}_note",
+                    )
+                    created_at = str(row.get("Created_At", "")).strip()
+                    if created_at:
+                        st.caption(f"Created: {created_at}")
+                    action_cols = st.columns([1, 1, 4])
+                    update_pressed = action_cols[0].form_submit_button("Update", type="primary")
+                    delete_pressed = action_cols[1].form_submit_button("Delete")
+
+                if update_pressed:
+                    ok, msg = update_expense_record(
+                        record_id,
+                        review_date,
+                        updated_expense,
+                        updated_category,
+                        updated_note,
+                        settings,
+                    )
+                    st.session_state["flash_message"] = {"ok": ok, "message": msg}
+                    st.rerun()
+                if delete_pressed:
+                    ok, msg = delete_expense_record(record_id, settings)
+                    st.session_state["flash_message"] = {"ok": ok, "message": msg}
+                    st.rerun()
 
 
 def style_plotly_chart(
@@ -2454,7 +2761,7 @@ def render_dashboard(
 
     st.markdown("### Smart Zone Insights")
     if not view_unlocked:
-        st.info("Zone insights are protected. Unlock admin access to view them.")
+        st.info("Zone insights are protected. Use See numbers to view them.")
     else:
         zone_status = build_zone_status(kpis)
         current_zone_text = "GREEN ZONE" if zone_status["current_zone_green"] else "RED ZONE"
@@ -2519,7 +2826,7 @@ def render_dashboard(
     with chart_right:
         st.markdown("### Balance Trend")
         if not view_unlocked:
-            st.info("Balance trend is protected. Unlock admin access to view it.")
+            st.info("Balance trend is protected. Use See numbers to view it.")
         elif all_revenue_df.empty and all_expense_df.empty:
             st.info("No records to build balance trend.")
         else:
@@ -2630,7 +2937,7 @@ def render_dashboard(
 
     st.markdown("### Break-Even Coverage Snapshot")
     if not view_unlocked:
-        st.info("Break-even coverage is protected. Unlock admin access to view it.")
+        st.info("Break-even coverage is protected. Use See numbers to view it.")
     else:
         break_even_df = pd.DataFrame(
             {
@@ -2664,7 +2971,7 @@ def render_dashboard(
 
     st.markdown("### Monthly Revenue Progress")
     if not view_unlocked:
-        st.info("Net month progress is protected. Unlock admin access to view it.")
+        st.info("Net month progress is protected. Use See numbers to view it.")
     else:
         projection_year = int(safe_float(kpis["projection_year"]))
         projection_month = int(safe_float(kpis["projection_month"]))
@@ -2761,7 +3068,6 @@ def main() -> None:
     all_expense_df = read_expense_data()
     st.title(APP_TITLE)
     st.caption("Local, offline revenue intelligence for Rooms + Bar operations.")
-    st.caption(APP_VERSION_LABEL)
     if USE_POSTGRES:
         st.caption("Storage backend: PostgreSQL (persistent cloud database).")
     else:
@@ -2789,15 +3095,8 @@ def main() -> None:
         else:
             st.error(flash_message["message"])
 
-    view_unlocked = bool(st.session_state.get("view_unlocked", False))
-    if view_unlocked:
-        st.session_state["edit_unlocked"] = True
-    edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
-
     view_unlocked = render_sensitive_numbers_access()
-    if view_unlocked:
-        st.session_state["edit_unlocked"] = True
-    edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
+    edit_unlocked = render_admin_access()
 
     with st.sidebar:
         st.markdown("### Session")
@@ -2876,7 +3175,8 @@ def main() -> None:
             st.write("Electricity: ****")
             st.write("Total Fixed Cost: ****")
 
-    render_admin_settings(settings, view_unlocked)
+    render_admin_settings(settings, edit_unlocked)
+    render_admin_day_review(settings, all_revenue_df, edit_unlocked)
 
     revenue_head_col_1, revenue_head_col_2 = st.columns([4, 1])
     revenue_head_col_1.markdown("### Revenue Entry")
@@ -2888,7 +3188,7 @@ def main() -> None:
     edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
     st.caption(
         "Rooms and Bar revenues are saved independently, once per date. "
-        "Save is always available for new dates; Update/Delete requires admin access."
+        "Save is available for new dates. Use Admin Entry Review for precise corrections."
     )
 
     if st.session_state.pop("clear_rooms_inputs", False):
@@ -2914,7 +3214,7 @@ def main() -> None:
             room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
 
             if room_exists:
-                st.caption("Rooms revenue already saved for this date. Save is locked; use Update/Delete with PIN.")
+                st.caption("Rooms revenue already exists for this date. Save is locked; correct it in Admin Entry Review.")
             else:
                 st.caption("No Rooms revenue saved for this date. Save is available.")
 
@@ -2957,7 +3257,7 @@ def main() -> None:
             bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
 
             if bar_exists:
-                st.caption("Bar revenue already saved for this date. Save is locked; use Update/Delete with PIN.")
+                st.caption("Bar revenue already exists for this date. Save is locked; correct it in Admin Entry Review.")
             else:
                 st.caption("No Bar revenue saved for this date. Save is available.")
 
@@ -3007,7 +3307,7 @@ def main() -> None:
         if not revenue_entry_exists(all_revenue_df, rooms_date, "Rooms"):
             st.session_state["flash_message"] = {
                 "ok": False,
-                "message": "No saved Rooms revenue for this date. Save first, then update with PIN.",
+                "message": "No saved Rooms revenue for this date. Save first, then update from Admin Entry Review.",
             }
             st.rerun()
         is_valid_amount, rooms_revenue, rooms_amount_err = parse_money_input(rooms_revenue_raw)
@@ -3050,7 +3350,7 @@ def main() -> None:
         if not revenue_entry_exists(all_revenue_df, bar_date, "Bar"):
             st.session_state["flash_message"] = {
                 "ok": False,
-                "message": "No saved Bar revenue for this date. Save first, then update with PIN.",
+                "message": "No saved Bar revenue for this date. Save first, then update from Admin Entry Review.",
             }
             st.rerun()
         is_valid_amount, bar_revenue, bar_amount_err = parse_money_input(bar_revenue_raw)
@@ -3094,24 +3394,14 @@ def main() -> None:
         expense_category = expense_cols[2].text_input("Category", key="expense_category_input")
         expense_note = expense_cols[3].text_input("Expense note", key="expense_note_input")
         st.caption(
-            "Non-fixed expenses can be saved multiple times for the same date. Update/Delete applies to the latest entry for that date."
+            "Non-fixed expenses can be saved multiple times for the same date. Use Admin Entry Review to edit or delete a specific entry."
         )
 
-        e1, e2, e3, e4 = st.columns(4)
+        e1, e2 = st.columns([1, 1])
         save_expense_pressed = e1.form_submit_button("Save", type="primary", use_container_width=True)
-        update_expense_pressed = e2.form_submit_button(
-            "Update",
-            type="primary",
-            use_container_width=True,
-            disabled=not edit_unlocked,
-        )
-        delete_expense_pressed = e3.form_submit_button(
-            "Delete",
-            type="primary",
-            use_container_width=True,
-            disabled=not edit_unlocked,
-        )
-        refresh_expense_pressed = e4.form_submit_button(
+        update_expense_pressed = False
+        delete_expense_pressed = False
+        refresh_expense_pressed = e2.form_submit_button(
             "Refresh",
             type="primary",
             use_container_width=True,

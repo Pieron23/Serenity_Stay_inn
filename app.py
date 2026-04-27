@@ -2418,6 +2418,32 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
+    st.markdown("#### Remove Fixed Cost")
+    st.caption("Remove sets the selected cost to 0 and recalculates the fixed monthly total.")
+    remove_cols = st.columns(4)
+    removable_settings = [
+        ("House rent", "House_Rent"),
+        ("Labor", "Labor"),
+        ("Water bill", "Water_Bill"),
+        ("Electricity", "Electricity"),
+    ]
+    for idx, (label, key) in enumerate(removable_settings):
+        disabled = safe_float(settings.get(key, 0.0)) == 0.0
+        if remove_cols[idx].button(
+            f"Remove {label}",
+            use_container_width=True,
+            disabled=disabled,
+            key=f"remove_setting_{key}",
+        ):
+            updated_settings = settings.copy()
+            updated_settings[key] = 0.0
+            ok, msg = save_settings(updated_settings)
+            st.session_state["flash_message"] = {
+                "ok": ok,
+                "message": f"{label} removed from fixed costs." if ok else msg,
+            }
+            st.rerun()
+
 
 def render_admin_day_review(
     settings: Dict[str, float],
@@ -2425,6 +2451,7 @@ def render_admin_day_review(
     is_unlocked: bool,
 ) -> None:
     st.markdown("### Admin Entry Review")
+    st.caption("Select a date to load every saved Rooms, Bar, and expense entry for correction.")
     review_date = st.date_input("Review date", value=date.today(), key="admin_review_date")
 
     if not is_unlocked:
@@ -3176,6 +3203,14 @@ def main() -> None:
             st.write("Electricity: ****")
             st.write("Total Fixed Cost: ****")
 
+    if edit_unlocked:
+        st.markdown("### Admin Workspace")
+        admin_review_tab, admin_settings_tab = st.tabs(["Entry review", "Settings"])
+        with admin_review_tab:
+            render_admin_day_review(settings, all_revenue_df, edit_unlocked)
+        with admin_settings_tab:
+            render_admin_settings(settings, edit_unlocked)
+
     st.markdown("### Revenue Entry")
     st.caption(
         "Rooms and Bar revenues are saved independently, once per date. "
@@ -3417,14 +3452,6 @@ def main() -> None:
 
     if refresh_expense_pressed:
         st.rerun()
-
-    if edit_unlocked:
-        st.markdown("### Admin Workspace")
-        admin_settings_tab, admin_review_tab = st.tabs(["Settings", "Entry review"])
-        with admin_settings_tab:
-            render_admin_settings(settings, edit_unlocked)
-        with admin_review_tab:
-            render_admin_day_review(settings, all_revenue_df, edit_unlocked)
 
     filtered_revenue_df = period_from_filters(
         all_revenue_df,

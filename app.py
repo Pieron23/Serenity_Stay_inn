@@ -180,11 +180,12 @@ def auto_unlock_sensitive_numbers() -> None:
         return
     if verify_edit_pin(candidate):
         st.session_state["view_unlocked"] = True
+        st.session_state["edit_unlocked"] = True
         st.session_state["sensitive_pin_invalid"] = False
         st.session_state["sensitive_pin_input"] = ""
         st.session_state["flash_message"] = {
             "ok": True,
-            "message": "Sensitive numbers unlocked for authorized viewing.",
+            "message": "Admin access unlocked.",
         }
     else:
         st.session_state["sensitive_pin_invalid"] = True
@@ -709,6 +710,24 @@ def write_all_data(
         expense_export_df.to_excel(writer, sheet_name=EXPENSE_SHEET, index=False)
         settings_df.to_excel(writer, sheet_name=SETTINGS_SHEET, index=False)
     temp_path.replace(path)
+
+
+def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
+    cleaned_settings = DEFAULT_SETTINGS.copy()
+    for key in ["Initial_Balance", "House_Rent", "Labor", "Water_Bill", "Electricity"]:
+        value = safe_float(settings.get(key, cleaned_settings[key]))
+        if value < 0:
+            return False, "Settings cannot contain negative amounts."
+        cleaned_settings[key] = value
+
+    cleaned_settings["Total_Fixed_Cost"] = (
+        cleaned_settings["House_Rent"]
+        + cleaned_settings["Labor"]
+        + cleaned_settings["Water_Bill"]
+        + cleaned_settings["Electricity"]
+    )
+    write_all_data(read_daily_data(), cleaned_settings, expense_df=read_expense_data())
+    return True, "Admin settings saved."
 
 
 def save_entry(
@@ -1241,7 +1260,7 @@ def inject_styles() -> None:
         """
         <style>
         :root {
-            --bg: #f4f8ff;
+            --bg: #f6f8fb;
             --card: #ffffff;
             --ink: #0f172a;
             --muted: #475569;
@@ -1259,10 +1278,7 @@ def inject_styles() -> None:
         }
 
         .stApp {
-            background:
-                radial-gradient(circle at 0% 0%, #dbeafe 0%, rgba(219, 234, 254, 0.2) 28%),
-                radial-gradient(circle at 100% 0%, #cffafe 0%, rgba(207, 250, 254, 0.08) 22%),
-                var(--bg);
+            background: var(--bg);
             color: var(--ink);
         }
 
@@ -1272,28 +1288,25 @@ def inject_styles() -> None:
         }
 
         .kpi-card {
-            background: linear-gradient(165deg, #ffffff 0%, #f4f8ff 100%);
-            border: 1px solid #cfe1ff;
-            border-radius: 16px;
-            padding: 14px 16px 15px 16px;
-            min-height: 152px;
-            height: 152px;
+            background: #ffffff;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
+            padding: 12px 14px;
+            min-height: 136px;
+            height: 136px;
             display: grid;
             grid-template-rows: 46px 1fr;
             align-items: center;
             justify-items: center;
             text-align: center;
-            box-shadow:
-                0 10px 24px rgba(15, 23, 42, 0.08),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
             transition: transform 0.16s ease, box-shadow 0.16s ease;
         }
 
         .kpi-card:hover {
             transform: translateY(-2px);
             box-shadow:
-                0 14px 26px rgba(29, 78, 216, 0.12),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
+                0 12px 24px rgba(15, 23, 42, 0.08);
         }
 
         .kpi-title {
@@ -1338,14 +1351,14 @@ def inject_styles() -> None:
             background: #ffffff;
             border: 1px solid #bfdbfe;
             border-left: 5px solid var(--accent-soft);
-            border-radius: 10px;
+            border-radius: 8px;
             padding: 10px 12px;
             margin-bottom: 8px;
             box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
         }
 
         .zone-card {
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px 14px;
             margin-bottom: 10px;
             border: 1px solid #dbeafe;
@@ -1368,13 +1381,13 @@ def inject_styles() -> None:
         }
 
         .status-card {
-            border-radius: 12px;
+            border-radius: 8px;
             padding: 12px 14px;
             margin-bottom: 10px;
             border: 1px solid #dbeafe;
             box-shadow: 0 6px 16px rgba(15, 23, 42, 0.05);
             font-weight: 600;
-            min-height: 72px;
+            min-height: 64px;
             display: flex;
             align-items: center;
         }
@@ -1398,18 +1411,18 @@ def inject_styles() -> None:
         }
 
         .perf-card {
-            background: linear-gradient(170deg, rgba(255, 255, 255, 0.96), rgba(240, 247, 255, 0.82));
-            border: 1px solid #cfe1ff;
-            border-radius: 12px;
+            background: #ffffff;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
             padding: 12px 14px;
-            min-height: 170px;
-            height: 170px;
+            min-height: 142px;
+            height: 142px;
             display: grid;
             grid-template-rows: auto 1fr auto;
             align-items: center;
             justify-items: center;
             text-align: center;
-            box-shadow: 0 8px 18px rgba(30, 64, 175, 0.1);
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
         }
 
         .perf-title {
@@ -1602,12 +1615,12 @@ def inject_styles() -> None:
         }
 
         .stForm {
-            background: rgba(255, 255, 255, 0.58);
-            border: 1px solid #bfdbfe;
-            border-radius: 16px;
-            padding: 12px 12px 14px 12px;
+            background: #ffffff;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
+            padding: 14px;
             box-shadow: none;
-            min-height: 338px;
+            min-height: 310px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -1617,7 +1630,7 @@ def inject_styles() -> None:
         .stForm div[data-baseweb="base-input"] > div {
             background: #ffffff !important;
             border: 1px solid #93c5fd !important;
-            border-radius: 12px !important;
+            border-radius: 8px !important;
             box-shadow: none !important;
         }
 
@@ -1652,8 +1665,8 @@ def inject_styles() -> None:
             border-radius: 12px;
             font-weight: 800;
             border: 1px solid #60a5fa !important;
-            min-height: 54px;
-            height: 54px;
+            min-height: 46px;
+            height: 46px;
             width: 100%;
             white-space: nowrap;
             display: inline-flex;
@@ -1699,12 +1712,61 @@ def inject_styles() -> None:
 
         [data-testid="stButton"] button,
         [data-testid="stPopover"] button {
-            border-radius: 12px !important;
+            border-radius: 8px !important;
             font-weight: 800 !important;
             border: 1px solid #93c5fd !important;
             color: #0b2f57 !important;
             background: linear-gradient(135deg, #e0f2fe, #dbeafe) !important;
             min-height: 44px;
+        }
+
+        .admin-pill,
+        .admin-mini {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 0 12px;
+            border-radius: 999px;
+            border: 1px solid #99f6e4;
+            background: #ecfdf5;
+            color: #0f766e;
+            font-size: 0.84rem;
+            font-weight: 800;
+        }
+
+        .admin-mini {
+            width: 100%;
+            min-height: 44px;
+            border-radius: 8px;
+        }
+
+        .admin-mini.muted {
+            border-color: #dbe4f0;
+            background: #f8fafc;
+            color: #64748b;
+        }
+
+        .admin-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin: 8px 0 12px 0;
+            padding: 12px 14px;
+            border: 1px solid #dbe4f0;
+            border-radius: 8px;
+            background: #f8fafc;
+        }
+
+        .admin-total span {
+            color: #475569;
+            font-weight: 700;
+        }
+
+        .admin-total strong {
+            color: #0f172a;
+            font-size: 1.15rem;
         }
 
         [data-testid="stButton"] button:hover,
@@ -1896,8 +1958,7 @@ def inject_auto_pin_blur_script() -> None:
 
           const pinLabels = new Set([
             "Enter dashboard PIN",
-            "Enter PIN to view sensitive numbers",
-            "Enter PIN to unlock update actions"
+            "Enter admin PIN"
           ]);
 
           function bindPinInput(el) {
@@ -2055,22 +2116,25 @@ def render_sensitive_numbers_access() -> bool:
     if "sensitive_pin_invalid" not in st.session_state:
         st.session_state["sensitive_pin_invalid"] = False
 
-    access_col_1, access_col_2 = st.columns([3, 1])
+    access_col_1, access_col_2 = st.columns([4, 1])
+    access_col_1.markdown("#### Admin Access")
     access_col_1.caption(
-        "Protected metrics: Initial balance, fixed cost, available/net balance, profit/loss, break-even gap."
+        "Unlock protected numbers, revenue and expense edits, and fixed-cost settings."
     )
 
     if st.session_state["view_unlocked"]:
-        if access_col_2.button("Hide numbers", use_container_width=True, key="hide_sensitive_btn"):
+        access_col_1.markdown('<div class="admin-pill">Admin mode active</div>', unsafe_allow_html=True)
+        if access_col_2.button("Lock admin", use_container_width=True, key="hide_sensitive_btn"):
             st.session_state["view_unlocked"] = False
+            st.session_state["edit_unlocked"] = False
             st.session_state["sensitive_pin_input"] = ""
             st.session_state["sensitive_pin_invalid"] = False
-            st.session_state["flash_message"] = {"ok": True, "message": "Sensitive numbers are now masked."}
+            st.session_state["flash_message"] = {"ok": True, "message": "Admin access locked."}
             st.rerun()
     else:
-        with access_col_2.popover("👁 See numbers", use_container_width=True):
+        with access_col_2.popover("Unlock admin", use_container_width=True):
             st.text_input(
-                "Enter PIN to view sensitive numbers",
+                "Enter admin PIN",
                 type="password",
                 key="sensitive_pin_input",
                 on_change=auto_unlock_sensitive_numbers,
@@ -2079,6 +2143,86 @@ def render_sensitive_numbers_access() -> bool:
                 st.caption("Incorrect PIN.")
 
     return bool(st.session_state["view_unlocked"])
+
+
+def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None:
+    st.markdown("### Admin Settings")
+    if not is_unlocked:
+        st.info("Unlock admin access to adjust fixed monthly costs and protected balance settings.")
+        return
+
+    with st.form("admin_settings_form", clear_on_submit=False):
+        st.caption("These settings update dashboard calculations only after Save settings.")
+        setting_cols = st.columns(5)
+        initial_balance = setting_cols[0].number_input(
+            "Initial balance",
+            min_value=0.0,
+            value=safe_float(settings["Initial_Balance"]),
+            step=1000.0,
+            format="%.0f",
+            key="setting_initial_balance",
+        )
+        house_rent = setting_cols[1].number_input(
+            "House rent",
+            min_value=0.0,
+            value=safe_float(settings["House_Rent"]),
+            step=1000.0,
+            format="%.0f",
+            key="setting_house_rent",
+        )
+        labor = setting_cols[2].number_input(
+            "Labor",
+            min_value=0.0,
+            value=safe_float(settings["Labor"]),
+            step=1000.0,
+            format="%.0f",
+            key="setting_labor",
+        )
+        water_bill = setting_cols[3].number_input(
+            "Water bill",
+            min_value=0.0,
+            value=safe_float(settings["Water_Bill"]),
+            step=1000.0,
+            format="%.0f",
+            key="setting_water_bill",
+        )
+        electricity = setting_cols[4].number_input(
+            "Electricity",
+            min_value=0.0,
+            value=safe_float(settings["Electricity"]),
+            step=1000.0,
+            format="%.0f",
+            key="setting_electricity",
+        )
+
+        total_fixed = house_rent + labor + water_bill + electricity
+        st.markdown(
+            f"""
+            <div class="admin-total">
+                <span>Total fixed monthly cost</span>
+                <strong>{format_rwf(total_fixed)}</strong>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        save_settings_pressed = st.form_submit_button(
+            "Save settings",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if save_settings_pressed:
+        ok, msg = save_settings(
+            {
+                "Initial_Balance": initial_balance,
+                "House_Rent": house_rent,
+                "Labor": labor,
+                "Water_Bill": water_bill,
+                "Electricity": electricity,
+            }
+        )
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
 
 
 def style_plotly_chart(
@@ -2138,7 +2282,7 @@ def render_dashboard(
     all_expense_df: pd.DataFrame,
     settings: Dict[str, float],
 ) -> None:
-    view_unlocked = render_sensitive_numbers_access()
+    view_unlocked = bool(st.session_state.get("view_unlocked", False))
     st.subheader("Financial KPI Overview")
     analysis_month = int(safe_float(kpis["projection_month"]))
     analysis_year = int(safe_float(kpis["projection_year"]))
@@ -2295,7 +2439,7 @@ def render_dashboard(
 
     st.markdown("### Smart Zone Insights")
     if not view_unlocked:
-        st.info("Zone insights are protected. Enter PIN and click See numbers to view.")
+        st.info("Zone insights are protected. Unlock admin access to view them.")
     else:
         zone_status = build_zone_status(kpis)
         current_zone_text = "GREEN ZONE" if zone_status["current_zone_green"] else "RED ZONE"
@@ -2360,7 +2504,7 @@ def render_dashboard(
     with chart_right:
         st.markdown("### Balance Trend")
         if not view_unlocked:
-            st.info("Balance trend is protected. Click 👁 See numbers and enter PIN.")
+            st.info("Balance trend is protected. Unlock admin access to view it.")
         elif all_revenue_df.empty and all_expense_df.empty:
             st.info("No records to build balance trend.")
         else:
@@ -2471,7 +2615,7 @@ def render_dashboard(
 
     st.markdown("### Break-Even Coverage Snapshot")
     if not view_unlocked:
-        st.info("Break-even coverage is protected. Click 👁 See numbers and enter PIN.")
+        st.info("Break-even coverage is protected. Unlock admin access to view it.")
     else:
         break_even_df = pd.DataFrame(
             {
@@ -2505,7 +2649,7 @@ def render_dashboard(
 
     st.markdown("### Monthly Revenue Progress")
     if not view_unlocked:
-        st.info("Net month progress is protected. Click 👁 See numbers and enter PIN.")
+        st.info("Net month progress is protected. Unlock admin access to view it.")
     else:
         projection_year = int(safe_float(kpis["projection_year"]))
         projection_month = int(safe_float(kpis["projection_month"]))
@@ -2630,6 +2774,13 @@ def main() -> None:
             st.error(flash_message["message"])
 
     view_unlocked = bool(st.session_state.get("view_unlocked", False))
+    if view_unlocked:
+        st.session_state["edit_unlocked"] = True
+    edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
+
+    view_unlocked = render_sensitive_numbers_access()
+    if view_unlocked:
+        st.session_state["edit_unlocked"] = True
     edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
 
     with st.sidebar:
@@ -2709,30 +2860,19 @@ def main() -> None:
             st.write("Electricity: ****")
             st.write("Total Fixed Cost: ****")
 
+    render_admin_settings(settings, view_unlocked)
+
     revenue_head_col_1, revenue_head_col_2 = st.columns([4, 1])
     revenue_head_col_1.markdown("### Revenue Entry")
     if edit_unlocked:
-        if revenue_head_col_2.button("Lock edit", use_container_width=True, key="lock_edit_btn"):
-            st.session_state["edit_unlocked"] = False
-            st.session_state["edit_pin_input"] = ""
-            st.session_state["edit_pin_invalid"] = False
-            st.session_state["flash_message"] = {"ok": True, "message": "Edit access locked."}
-            st.rerun()
+        revenue_head_col_2.markdown('<div class="admin-mini">Editing enabled</div>', unsafe_allow_html=True)
     else:
-        with revenue_head_col_2.popover("Unlock edit", use_container_width=True):
-            st.text_input(
-                "Enter PIN to unlock update actions",
-                type="password",
-                key="edit_pin_input",
-                on_change=auto_unlock_edit_mode,
-            )
-            if st.session_state.get("edit_pin_invalid", False):
-                st.caption("Incorrect PIN.")
+        revenue_head_col_2.markdown('<div class="admin-mini muted">Editing locked</div>', unsafe_allow_html=True)
 
     edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
     st.caption(
         "Rooms and Bar revenues are saved independently, once per date. "
-        "After saving, use Update/Delete with edit PIN."
+        "Save is always available for new dates; Update/Delete requires admin access."
     )
 
     if st.session_state.pop("clear_rooms_inputs", False):
@@ -3039,6 +3179,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-

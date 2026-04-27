@@ -1874,6 +1874,11 @@ def inject_styles() -> None:
             color: #64748b;
         }
 
+        .sidebar-pill {
+            width: 100%;
+            margin: 4px 0 8px 0;
+        }
+
         .admin-total {
             display: flex;
             justify-content: space-between;
@@ -2276,22 +2281,20 @@ def render_sensitive_numbers_access() -> bool:
     if "sensitive_pin_invalid" not in st.session_state:
         st.session_state["sensitive_pin_invalid"] = False
 
-    access_col_1, access_col_2 = st.columns([4, 1])
-    access_col_1.markdown("#### Protected Numbers")
-    access_col_1.caption(
-        "Unlock balance, fixed-cost, profit/loss, and break-even figures."
-    )
+    st.markdown("### Access")
+    st.markdown("**Protected numbers**")
+    st.caption("Shows balance, fixed-cost, profit/loss, and break-even figures.")
 
     if st.session_state["view_unlocked"]:
-        access_col_1.markdown('<div class="admin-pill">Numbers visible</div>', unsafe_allow_html=True)
-        if access_col_2.button("Hide numbers", use_container_width=True, key="hide_sensitive_btn"):
+        st.markdown('<div class="admin-pill sidebar-pill">Numbers visible</div>', unsafe_allow_html=True)
+        if st.button("Hide numbers", use_container_width=True, key="hide_sensitive_btn"):
             st.session_state["view_unlocked"] = False
             st.session_state["sensitive_pin_input"] = ""
             st.session_state["sensitive_pin_invalid"] = False
             st.session_state["flash_message"] = {"ok": True, "message": "Protected numbers hidden."}
             st.rerun()
     else:
-        with access_col_2.popover("See numbers", use_container_width=True):
+        with st.popover("See numbers", use_container_width=True):
             st.text_input(
                 "Enter PIN to view protected numbers",
                 type="password",
@@ -2310,22 +2313,19 @@ def render_admin_access() -> bool:
     if "edit_pin_invalid" not in st.session_state:
         st.session_state["edit_pin_invalid"] = False
 
-    admin_col_1, admin_col_2 = st.columns([4, 1])
-    admin_col_1.markdown("#### Admin Editing")
-    admin_col_1.caption(
-        "Unlock fixed-cost settings and exact entry correction for mistaken data."
-    )
+    st.markdown("**Admin editing**")
+    st.caption("Controls fixed-cost settings and exact entry corrections.")
 
     if st.session_state["edit_unlocked"]:
-        admin_col_1.markdown('<div class="admin-pill">Admin editing active</div>', unsafe_allow_html=True)
-        if admin_col_2.button("Lock admin", use_container_width=True, key="lock_admin_btn"):
+        st.markdown('<div class="admin-pill sidebar-pill">Admin editing active</div>', unsafe_allow_html=True)
+        if st.button("Lock admin", use_container_width=True, key="lock_admin_btn"):
             st.session_state["edit_unlocked"] = False
             st.session_state["edit_pin_input"] = ""
             st.session_state["edit_pin_invalid"] = False
             st.session_state["flash_message"] = {"ok": True, "message": "Admin editing locked."}
             st.rerun()
     else:
-        with admin_col_2.popover("Unlock admin", use_container_width=True):
+        with st.popover("Unlock admin", use_container_width=True):
             st.text_input(
                 "Enter admin PIN",
                 type="password",
@@ -3095,9 +3095,6 @@ def main() -> None:
         else:
             st.error(flash_message["message"])
 
-    view_unlocked = render_sensitive_numbers_access()
-    edit_unlocked = render_admin_access()
-
     with st.sidebar:
         st.markdown("### Session")
         if st.button("Log out", use_container_width=True, key="logout_btn"):
@@ -3112,6 +3109,10 @@ def main() -> None:
             st.session_state["edit_pin_invalid"] = False
             st.session_state["flash_message"] = {"ok": True, "message": "You are logged out."}
             st.rerun()
+
+        st.markdown("---")
+        view_unlocked = render_sensitive_numbers_access()
+        edit_unlocked = render_admin_access()
 
         st.markdown("---")
         st.header("Filters")
@@ -3175,17 +3176,7 @@ def main() -> None:
             st.write("Electricity: ****")
             st.write("Total Fixed Cost: ****")
 
-    render_admin_settings(settings, edit_unlocked)
-    render_admin_day_review(settings, all_revenue_df, edit_unlocked)
-
-    revenue_head_col_1, revenue_head_col_2 = st.columns([4, 1])
-    revenue_head_col_1.markdown("### Revenue Entry")
-    if edit_unlocked:
-        revenue_head_col_2.markdown('<div class="admin-mini">Editing enabled</div>', unsafe_allow_html=True)
-    else:
-        revenue_head_col_2.markdown('<div class="admin-mini muted">Editing locked</div>', unsafe_allow_html=True)
-
-    edit_unlocked = bool(st.session_state.get("edit_unlocked", False))
+    st.markdown("### Revenue Entry")
     st.caption(
         "Rooms and Bar revenues are saved independently, once per date. "
         "Save is available for new dates. Use Admin Entry Review for precise corrections."
@@ -3218,26 +3209,16 @@ def main() -> None:
             else:
                 st.caption("No Rooms revenue saved for this date. Save is available.")
 
-            rb1, rb2, rb3, rb4 = st.columns(4)
+            rb1, rb2 = st.columns(2)
             save_rooms_pressed = rb1.form_submit_button(
                 "Save",
                 type="primary",
                 use_container_width=True,
                 disabled=room_exists,
             )
-            update_rooms_pressed = rb2.form_submit_button(
-                "Update",
-                type="primary",
-                use_container_width=True,
-                disabled=(not edit_unlocked) or (not room_exists),
-            )
-            delete_rooms_pressed = rb3.form_submit_button(
-                "Delete",
-                type="primary",
-                use_container_width=True,
-                disabled=(not edit_unlocked) or (not room_exists),
-            )
-            refresh_rooms_pressed = rb4.form_submit_button(
+            update_rooms_pressed = False
+            delete_rooms_pressed = False
+            refresh_rooms_pressed = rb2.form_submit_button(
                 "Refresh",
                 type="primary",
                 use_container_width=True,
@@ -3261,26 +3242,16 @@ def main() -> None:
             else:
                 st.caption("No Bar revenue saved for this date. Save is available.")
 
-            bb1, bb2, bb3, bb4 = st.columns(4)
+            bb1, bb2 = st.columns(2)
             save_bar_pressed = bb1.form_submit_button(
                 "Save",
                 type="primary",
                 use_container_width=True,
                 disabled=bar_exists,
             )
-            update_bar_pressed = bb2.form_submit_button(
-                "Update",
-                type="primary",
-                use_container_width=True,
-                disabled=(not edit_unlocked) or (not bar_exists),
-            )
-            delete_bar_pressed = bb3.form_submit_button(
-                "Delete",
-                type="primary",
-                use_container_width=True,
-                disabled=(not edit_unlocked) or (not bar_exists),
-            )
-            refresh_bar_pressed = bb4.form_submit_button(
+            update_bar_pressed = False
+            delete_bar_pressed = False
+            refresh_bar_pressed = bb2.form_submit_button(
                 "Refresh",
                 type="primary",
                 use_container_width=True,
@@ -3446,6 +3417,14 @@ def main() -> None:
 
     if refresh_expense_pressed:
         st.rerun()
+
+    if edit_unlocked:
+        st.markdown("### Admin Workspace")
+        admin_settings_tab, admin_review_tab = st.tabs(["Settings", "Entry review"])
+        with admin_settings_tab:
+            render_admin_settings(settings, edit_unlocked)
+        with admin_review_tab:
+            render_admin_day_review(settings, all_revenue_df, edit_unlocked)
 
     filtered_revenue_df = period_from_filters(
         all_revenue_df,

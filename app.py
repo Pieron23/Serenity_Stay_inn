@@ -2430,6 +2430,7 @@ def inject_modern_styles() -> None:
         div[data-testid="stRadio"] div[role="radiogroup"] {
             display: flex !important;
             width: 100% !important;
+            flex-wrap: wrap !important;
             gap: 6px !important;
             padding: 4px !important;
             border: 1px solid #c8daf0 !important;
@@ -2438,13 +2439,16 @@ def inject_modern_styles() -> None:
         }
 
         div[data-testid="stRadio"] div[role="radiogroup"] label {
-            flex: 1 1 0 !important;
+            flex: 1 1 132px !important;
+            min-width: 132px !important;
             min-height: 42px !important;
+            box-sizing: border-box !important;
             margin: 0 !important;
             padding: 0 12px !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
+            text-align: center !important;
             border: 1px solid transparent !important;
             border-radius: 8px !important;
             background: #ffffff !important;
@@ -2468,6 +2472,22 @@ def inject_modern_styles() -> None:
             color: #0f172a !important;
             font-weight: 800 !important;
             opacity: 1 !important;
+            font-size: 0.95rem !important;
+            line-height: 1.25 !important;
+            overflow-wrap: normal !important;
+            word-break: normal !important;
+            hyphens: none !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label p,
+        div[data-testid="stRadio"] div[role="radiogroup"] label span {
+            width: 100% !important;
+            max-width: 100% !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            overflow-wrap: normal !important;
+            word-break: keep-all !important;
+            hyphens: none !important;
         }
 
         div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
@@ -2526,12 +2546,16 @@ def inject_modern_styles() -> None:
                 font-size: 1.16rem;
             }
 
-            div[data-testid="stRadio"] div[role="radiogroup"] {
-                flex-wrap: wrap !important;
-            }
-
             div[data-testid="stRadio"] div[role="radiogroup"] label {
                 flex-basis: calc(50% - 6px) !important;
+                min-width: 148px !important;
+            }
+        }
+
+        @media (max-width: 520px) {
+            div[data-testid="stRadio"] div[role="radiogroup"] label {
+                flex-basis: 100% !important;
+                min-width: 100% !important;
             }
         }
         </style>

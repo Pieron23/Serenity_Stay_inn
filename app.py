@@ -2342,30 +2342,6 @@ def inject_modern_styles() -> None:
             fill: #0f172a !important;
         }
 
-        div[data-baseweb="segment-control"] {
-            border: 1px solid #c8daf0 !important;
-            border-radius: 12px !important;
-            background: #f8fbff !important;
-            padding: 4px !important;
-        }
-
-        div[data-baseweb="segment-control"] button {
-            color: #1e293b !important;
-            font-weight: 700 !important;
-            border-radius: 9px !important;
-            transition: background 0.16s ease, color 0.16s ease;
-        }
-
-        div[data-baseweb="segment-control"] button:hover {
-            color: #0f172a !important;
-            background: #eef5ff !important;
-        }
-
-        div[data-baseweb="segment-control"] button[aria-pressed="true"] {
-            color: #0f172a !important;
-            background: #e8f1ff !important;
-        }
-
         [data-testid="stAlert"] {
             border-radius: 10px !important;
             border: 1px solid #dbe7f5 !important;
@@ -2447,6 +2423,96 @@ def inject_modern_styles() -> None:
             fill: #0f172a !important;
         }
 
+        div[data-testid="stRadio"] > label {
+            display: none !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] {
+            display: flex !important;
+            width: 100% !important;
+            gap: 6px !important;
+            padding: 4px !important;
+            border: 1px solid #c8daf0 !important;
+            border-radius: 10px !important;
+            background: #f8fbff !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label {
+            flex: 1 1 0 !important;
+            min-height: 42px !important;
+            margin: 0 !important;
+            padding: 0 12px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border: 1px solid transparent !important;
+            border-radius: 8px !important;
+            background: #ffffff !important;
+            color: #1e293b !important;
+            cursor: pointer !important;
+            transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label:hover {
+            background: #eef5ff !important;
+            border-color: #93c5fd !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+            background: #e8f1ff !important;
+            border-color: #2563eb !important;
+            box-shadow: inset 0 -2px 0 #2563eb !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label * {
+            color: #0f172a !important;
+            font-weight: 800 !important;
+            opacity: 1 !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] label > div:first-child {
+            display: none !important;
+        }
+
+        div[data-testid="stRadio"] div[role="radiogroup"] input[type="radio"] {
+            opacity: 0 !important;
+            position: absolute !important;
+            pointer-events: none !important;
+        }
+
+        div[data-testid="stButton"] button,
+        div[data-testid="stFormSubmitButton"] button,
+        div[data-testid="stDownloadButton"] button {
+            color: #0f172a !important;
+            background: #eff6ff !important;
+            border: 1px solid #93c5fd !important;
+        }
+
+        div[data-testid="stButton"] button *,
+        div[data-testid="stFormSubmitButton"] button *,
+        div[data-testid="stDownloadButton"] button * {
+            color: #0f172a !important;
+            fill: #0f172a !important;
+            opacity: 1 !important;
+        }
+
+        div[data-testid="stButton"] button:disabled,
+        div[data-testid="stFormSubmitButton"] button:disabled,
+        div[data-testid="stDownloadButton"] button:disabled {
+            color: #64748b !important;
+            background: #e5e7eb !important;
+            border-color: #cbd5e1 !important;
+            cursor: not-allowed !important;
+            opacity: 1 !important;
+        }
+
+        div[data-testid="stButton"] button:disabled *,
+        div[data-testid="stFormSubmitButton"] button:disabled *,
+        div[data-testid="stDownloadButton"] button:disabled * {
+            color: #64748b !important;
+            fill: #64748b !important;
+        }
+
         @media (max-width: 900px) {
             .dashboard-header .title {
                 font-size: 1.45rem;
@@ -2458,6 +2524,14 @@ def inject_modern_styles() -> None:
 
             .kpi-modern-value {
                 font-size: 1.16rem;
+            }
+
+            div[data-testid="stRadio"] div[role="radiogroup"] {
+                flex-wrap: wrap !important;
+            }
+
+            div[data-testid="stRadio"] div[role="radiogroup"] label {
+                flex-basis: calc(50% - 6px) !important;
             }
         }
         </style>
@@ -2663,14 +2737,14 @@ def render_sensitive_numbers_access() -> bool:
 
     if st.session_state["view_unlocked"]:
         st.markdown('<div class="admin-pill sidebar-pill">Numbers visible</div>', unsafe_allow_html=True)
-        if st.button("Hide numbers", use_container_width=True, key="hide_sensitive_btn"):
+        if st.button("Hide numbers", width="stretch", key="hide_sensitive_btn"):
             st.session_state["view_unlocked"] = False
             st.session_state["sensitive_pin_input"] = ""
             st.session_state["sensitive_pin_invalid"] = False
             st.session_state["flash_message"] = {"ok": True, "message": "Protected numbers hidden."}
             st.rerun()
     else:
-        with st.popover("See numbers", use_container_width=True):
+        with st.popover("See numbers", width="stretch"):
             st.text_input(
                 "Enter PIN to view protected numbers",
                 type="password",
@@ -2694,14 +2768,14 @@ def render_admin_access() -> bool:
 
     if st.session_state["edit_unlocked"]:
         st.markdown('<div class="admin-pill sidebar-pill">Admin editing active</div>', unsafe_allow_html=True)
-        if st.button("Lock admin", use_container_width=True, key="lock_admin_btn"):
+        if st.button("Lock admin", width="stretch", key="lock_admin_btn"):
             st.session_state["edit_unlocked"] = False
             st.session_state["edit_pin_input"] = ""
             st.session_state["edit_pin_invalid"] = False
             st.session_state["flash_message"] = {"ok": True, "message": "Admin editing locked."}
             st.rerun()
     else:
-        with st.popover("Unlock admin", use_container_width=True):
+        with st.popover("Unlock admin", width="stretch"):
             st.text_input(
                 "Enter admin PIN",
                 type="password",
@@ -2778,7 +2852,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         save_settings_pressed = st.form_submit_button(
             "Save settings",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if save_settings_pressed:
@@ -2807,7 +2881,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         disabled = safe_float(settings.get(key, 0.0)) == 0.0
         if remove_cols[idx].button(
             f"Remove {label}",
-            use_container_width=True,
+            width="stretch",
             disabled=disabled,
             key=f"remove_setting_{key}",
         ):
@@ -2857,16 +2931,14 @@ def render_admin_day_review(
     review_options = ["Revenue entries", "Expense entries"]
     if "admin_review_mode" not in st.session_state:
         st.session_state["admin_review_mode"] = review_options[0]
-    review_mode = st.segmented_control(
+    review_mode = st.radio(
         "Admin review mode",
         options=review_options,
+        index=review_options.index(st.session_state["admin_review_mode"]),
         key="admin_review_mode",
-        default=st.session_state["admin_review_mode"],
+        horizontal=True,
         label_visibility="collapsed",
-        width="stretch",
     )
-    if review_mode is None:
-        review_mode = review_options[0]
 
     if review_mode == "Revenue entries":
         if day_revenue_df.empty:
@@ -3236,7 +3308,7 @@ def render_dashboard(
             )
             fig_daily.update_traces(line_color="#1d4ed8", marker_color="#f59e0b")
             style_plotly_chart(fig_daily, is_date_x=True, date_values=trend_df["Date"], y_is_currency=True)
-            st.plotly_chart(fig_daily, use_container_width=True)
+            st.plotly_chart(fig_daily, width="stretch")
 
     with chart_right:
         st.markdown("### Balance Trend")
@@ -3274,7 +3346,7 @@ def render_dashboard(
             )
             fig_balance.update_traces(line_color="#1e40af", marker_color="#fb923c")
             style_plotly_chart(fig_balance, is_date_x=True, date_values=balance_df["Date"], y_is_currency=True)
-            st.plotly_chart(fig_balance, use_container_width=True)
+            st.plotly_chart(fig_balance, width="stretch")
 
     chart_left, chart_right = st.columns(2)
 
@@ -3297,7 +3369,7 @@ def render_dashboard(
                 coloraxis_showscale=False,
             )
             style_plotly_chart(fig_monthly, y_is_currency=True)
-            st.plotly_chart(fig_monthly, use_container_width=True)
+            st.plotly_chart(fig_monthly, width="stretch")
 
     with chart_right:
         st.markdown("### Fixed Cost Breakdown")
@@ -3322,7 +3394,7 @@ def render_dashboard(
             color_discrete_sequence=["#1d4ed8", "#3b82f6", "#f59e0b", "#ea580c"],
         )
         style_plotly_chart(fig_costs)
-        st.plotly_chart(fig_costs, use_container_width=True)
+        st.plotly_chart(fig_costs, width="stretch")
 
     chart_left, chart_right = st.columns(2)
 
@@ -3348,7 +3420,7 @@ def render_dashboard(
                 date_values=expense_trend_df["Date"],
                 y_is_currency=True,
             )
-            st.plotly_chart(fig_expense, use_container_width=True)
+            st.plotly_chart(fig_expense, width="stretch")
 
     st.markdown("### Break-Even Coverage Snapshot")
     if not view_unlocked:
@@ -3382,7 +3454,7 @@ def render_dashboard(
             showlegend=False,
         )
         style_plotly_chart(fig_break_even, y_is_currency=True)
-        st.plotly_chart(fig_break_even, use_container_width=True)
+        st.plotly_chart(fig_break_even, width="stretch")
 
     st.markdown("### Monthly Revenue Progress")
     if not view_unlocked:
@@ -3441,7 +3513,7 @@ def render_dashboard(
                 annotation_position="top left",
             )
             style_plotly_chart(fig_progress, is_date_x=True, date_values=daily_proj["Date"], y_is_currency=True)
-            st.plotly_chart(fig_progress, use_container_width=True)
+            st.plotly_chart(fig_progress, width="stretch")
 
     st.markdown("### Revenue Records (Filtered)")
     if filtered_revenue_df.empty:
@@ -3453,7 +3525,7 @@ def render_dashboard(
         display_df = display_df[
             ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
         ].rename(columns={"Revenue_Type": "Revenue Stream"})
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width="stretch", hide_index=True)
 
     st.markdown("### Non-Fixed Expense Records (Filtered)")
     if filtered_expense_df.empty:
@@ -3462,7 +3534,7 @@ def render_dashboard(
         expense_display_df = filtered_expense_df.copy()
         expense_display_df["Date"] = pd.to_datetime(expense_display_df["Date"]).dt.strftime("%Y-%m-%d")
         expense_display_df["Expense"] = expense_display_df["Expense"].map(format_rwf)
-        st.dataframe(expense_display_df, use_container_width=True, hide_index=True)
+        st.dataframe(expense_display_df, width="stretch", hide_index=True)
 
 
 def render_chart_card(title: str, renderer: Callable[[], None], subtitle: str = "") -> None:
@@ -3707,7 +3779,7 @@ def render_dashboard_tab(
             )
             fig_trend.update_traces(line_width=3, marker_size=8)
             style_plotly_chart(fig_trend, is_date_x=True, date_values=trend_df["Date"], y_is_currency=True)
-            st.plotly_chart(fig_trend, use_container_width=True)
+            st.plotly_chart(fig_trend, width="stretch")
 
         render_chart_card("Revenue Trend", _revenue_trend_chart, "Daily total revenue for the current month.")
 
@@ -3727,7 +3799,7 @@ def render_dashboard_tab(
             )
             fig_monthly.update_layout(coloraxis_showscale=False)
             style_plotly_chart(fig_monthly, y_is_currency=True)
-            st.plotly_chart(fig_monthly, use_container_width=True)
+            st.plotly_chart(fig_monthly, width="stretch")
 
         render_chart_card("Monthly Revenue", _monthly_bar_chart, "Month-by-month revenue performance.")
 
@@ -3741,10 +3813,14 @@ def render_dashboard_tab(
                 rev_daily = month_revenue_df.groupby("Date", as_index=False)["Revenue"].sum()
             if not month_expense_df.empty:
                 exp_daily = month_expense_df.groupby("Date", as_index=False)["Expense"].sum()
-            compare_df = pd.merge(rev_daily, exp_daily, on="Date", how="outer").fillna(0.0).sort_values("Date")
+            compare_df = pd.merge(rev_daily, exp_daily, on="Date", how="outer").sort_values("Date")
             if compare_df.empty:
                 st.info("No revenue or expense records for this month yet.")
                 return
+            for amount_col in ["Revenue", "Expense"]:
+                compare_df[amount_col] = pd.to_numeric(
+                    compare_df[amount_col], errors="coerce"
+                ).fillna(0.0)
             compare_df["Date"] = pd.to_datetime(compare_df["Date"]).dt.normalize()
             long_df = compare_df.melt(
                 id_vars="Date",
@@ -3762,7 +3838,7 @@ def render_dashboard_tab(
                 color_discrete_map={"Revenue": "#1d4ed8", "Expense": "#ea580c"},
             )
             style_plotly_chart(fig_compare, is_date_x=True, date_values=compare_df["Date"], y_is_currency=True)
-            st.plotly_chart(fig_compare, use_container_width=True)
+            st.plotly_chart(fig_compare, width="stretch")
 
         render_chart_card(
             "Revenue vs Expense",
@@ -3798,7 +3874,7 @@ def render_dashboard_tab(
                 },
             )
             style_plotly_chart(fig_break_even, y_is_currency=True)
-            st.plotly_chart(fig_break_even, use_container_width=True)
+            st.plotly_chart(fig_break_even, width="stretch")
 
         render_chart_card(
             "Break-even Progress",
@@ -3830,7 +3906,7 @@ def render_dashboard_tab(
             color_discrete_sequence=["#1d4ed8", "#0ea5e9", "#f59e0b", "#ea580c"],
         )
         style_plotly_chart(fig_costs)
-        st.plotly_chart(fig_costs, use_container_width=True)
+        st.plotly_chart(fig_costs, width="stretch")
 
     render_chart_card(
         "Fixed Cost Breakdown",
@@ -3886,7 +3962,7 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 save_rooms_pressed = st.form_submit_button(
                     "Save Rooms Revenue",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=room_exists,
                 )
 
@@ -3914,7 +3990,7 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 save_bar_pressed = st.form_submit_button(
                     "Save Bar Revenue",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=bar_exists,
                 )
 
@@ -3944,7 +4020,7 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 save_wedding_pressed = st.form_submit_button(
                     "Save Wedding Revenue",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     disabled=wedding_exists,
                 )
 
@@ -4020,7 +4096,7 @@ def render_expense_tab(settings: Dict[str, float]) -> None:
             save_expense_pressed = st.form_submit_button(
                 "Save Expense",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             )
 
     if save_expense_pressed:
@@ -4124,14 +4200,14 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
                 format_rwf(wedding_revenue),
                 format_rwf(total_expense),
                 format_rwf(net_total),
-                int(len(filtered_revenue_df)),
-                int(len(filtered_expense_df)),
+                str(len(filtered_revenue_df)),
+                str(len(filtered_expense_df)),
             ],
         }
     )
 
     st.markdown("#### Summary")
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    st.dataframe(summary_df, width="stretch", hide_index=True)
 
     st.markdown("#### Revenue Records")
     if filtered_revenue_df.empty:
@@ -4143,7 +4219,7 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         revenue_display_df = revenue_display_df[
             ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
         ].rename(columns={"Revenue_Type": "Revenue Stream"})
-        st.dataframe(revenue_display_df, use_container_width=True, hide_index=True)
+        st.dataframe(revenue_display_df, width="stretch", hide_index=True)
 
     st.markdown("#### Expense Records")
     if filtered_expense_df.empty:
@@ -4152,7 +4228,7 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         expense_display_df = filtered_expense_df.copy()
         expense_display_df["Date"] = pd.to_datetime(expense_display_df["Date"]).dt.strftime("%Y-%m-%d")
         expense_display_df["Expense"] = expense_display_df["Expense"].map(format_rwf)
-        st.dataframe(expense_display_df, use_container_width=True, hide_index=True)
+        st.dataframe(expense_display_df, width="stretch", hide_index=True)
 
     download_col_1, download_col_2, download_col_3 = st.columns(3)
 
@@ -4165,14 +4241,14 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         data=revenue_csv,
         file_name=f"serenity_revenue_{report_file_key}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
     download_col_2.download_button(
         "Download Expense CSV",
         data=expense_csv,
         file_name=f"serenity_expense_{report_file_key}.csv",
         mime="text/csv",
-        use_container_width=True,
+        width="stretch",
     )
 
     export_buffer = BytesIO()
@@ -4187,7 +4263,7 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         data=export_buffer.getvalue(),
         file_name=f"serenity_report_{report_file_key}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -4216,16 +4292,14 @@ def render_admin_tab(
     admin_sections = ["Review/Edit Entries", "Fixed Costs & Balance"]
     if "admin_section_mode" not in st.session_state:
         st.session_state["admin_section_mode"] = admin_sections[0]
-    admin_mode = st.segmented_control(
+    admin_mode = st.radio(
         "Admin section",
         options=admin_sections,
+        index=admin_sections.index(st.session_state["admin_section_mode"]),
         key="admin_section_mode",
-        default=st.session_state["admin_section_mode"],
+        horizontal=True,
         label_visibility="collapsed",
-        width="stretch",
     )
-    if admin_mode is None:
-        admin_mode = admin_sections[0]
 
     if admin_mode == "Review/Edit Entries":
         render_admin_day_review(settings, all_revenue_df, is_admin_unlocked)
@@ -4282,7 +4356,7 @@ def main() -> None:
 
     with st.sidebar:
         st.markdown("### Session")
-        if st.button("Log out", use_container_width=True, key="logout_btn"):
+        if st.button("Log out", width="stretch", key="logout_btn"):
             st.session_state["is_logged_in"] = False
             st.session_state["view_unlocked"] = False
             st.session_state["edit_unlocked"] = False
@@ -4371,16 +4445,14 @@ def main() -> None:
     app_sections = ["Dashboard", "Add Revenue", "Add Expense", "Reports", "Admin"]
     if "active_app_section" not in st.session_state:
         st.session_state["active_app_section"] = app_sections[0]
-    active_section = st.segmented_control(
+    active_section = st.radio(
         "Main navigation",
         options=app_sections,
+        index=app_sections.index(st.session_state["active_app_section"]),
         key="active_app_section",
-        default=st.session_state["active_app_section"],
+        horizontal=True,
         label_visibility="collapsed",
-        width="stretch",
     )
-    if active_section is None:
-        active_section = app_sections[0]
 
     if active_section == "Dashboard":
         render_dashboard_tab(

@@ -2342,6 +2342,111 @@ def inject_modern_styles() -> None:
             fill: #0f172a !important;
         }
 
+        div[data-baseweb="segment-control"] {
+            border: 1px solid #c8daf0 !important;
+            border-radius: 12px !important;
+            background: #f8fbff !important;
+            padding: 4px !important;
+        }
+
+        div[data-baseweb="segment-control"] button {
+            color: #1e293b !important;
+            font-weight: 700 !important;
+            border-radius: 9px !important;
+            transition: background 0.16s ease, color 0.16s ease;
+        }
+
+        div[data-baseweb="segment-control"] button:hover {
+            color: #0f172a !important;
+            background: #eef5ff !important;
+        }
+
+        div[data-baseweb="segment-control"] button[aria-pressed="true"] {
+            color: #0f172a !important;
+            background: #e8f1ff !important;
+        }
+
+        [data-testid="stAlert"] {
+            border-radius: 10px !important;
+            border: 1px solid #dbe7f5 !important;
+            background: #f8fbff !important;
+        }
+
+        [data-testid="stAlert"] * {
+            color: #0f172a !important;
+            fill: #0f172a !important;
+            opacity: 1 !important;
+        }
+
+        [data-testid="stAlert"][kind="warning"] {
+            background: #fff7ed !important;
+            border-color: #fdba74 !important;
+        }
+
+        [data-testid="stAlert"][kind="info"] {
+            background: #eff6ff !important;
+            border-color: #93c5fd !important;
+        }
+
+        [data-testid="stAlert"][kind="success"] {
+            background: #ecfdf5 !important;
+            border-color: #86efac !important;
+        }
+
+        [data-testid="stAlert"][kind="error"] {
+            background: #fef2f2 !important;
+            border-color: #fca5a5 !important;
+        }
+
+        [data-testid="stDownloadButton"] button {
+            border-radius: 10px !important;
+            font-weight: 800 !important;
+            border: 1px solid #93c5fd !important;
+            color: #0f172a !important;
+            background: #eff6ff !important;
+            min-height: 46px !important;
+        }
+
+        [data-testid="stDownloadButton"] button:hover {
+            color: #0f172a !important;
+            background: #dbeafe !important;
+            border-color: #60a5fa !important;
+        }
+
+        [data-testid="stDownloadButton"] button p,
+        [data-testid="stDownloadButton"] button span {
+            color: #0f172a !important;
+            font-weight: 800 !important;
+        }
+
+        div[data-testid="stExpander"] details {
+            border: 1px solid #c8daf0 !important;
+            border-radius: 12px !important;
+            background: #f8fbff !important;
+            overflow: hidden !important;
+        }
+
+        div[data-testid="stExpander"] details summary {
+            background: #eef5ff !important;
+            border-bottom: 1px solid #dbe7f5 !important;
+            padding-top: 0.3rem !important;
+            padding-bottom: 0.3rem !important;
+        }
+
+        div[data-testid="stExpander"] details summary:hover {
+            background: #e0ecff !important;
+        }
+
+        div[data-testid="stExpander"] details summary p,
+        div[data-testid="stExpander"] details summary span {
+            color: #0f172a !important;
+            font-weight: 700 !important;
+        }
+
+        div[data-testid="stExpander"] details summary svg {
+            fill: #0f172a !important;
+        }
+
         @media (max-width: 900px) {
             .dashboard-header .title {
                 font-size: 1.45rem;
@@ -2749,9 +2854,21 @@ def render_admin_day_review(
         unsafe_allow_html=True,
     )
 
-    review_tabs = st.tabs(["Revenue entries", "Expense entries"])
+    review_options = ["Revenue entries", "Expense entries"]
+    if "admin_review_mode" not in st.session_state:
+        st.session_state["admin_review_mode"] = review_options[0]
+    review_mode = st.segmented_control(
+        "Admin review mode",
+        options=review_options,
+        key="admin_review_mode",
+        default=st.session_state["admin_review_mode"],
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    if review_mode is None:
+        review_mode = review_options[0]
 
-    with review_tabs[0]:
+    if review_mode == "Revenue entries":
         if day_revenue_df.empty:
             st.info("No revenue entries found for this date.")
         else:
@@ -2793,7 +2910,7 @@ def render_admin_day_review(
                     st.session_state["flash_message"] = {"ok": ok, "message": msg}
                     st.rerun()
 
-    with review_tabs[1]:
+    if review_mode == "Expense entries":
         if day_expense_df.empty:
             st.info("No non-fixed expense entries found for this date.")
         else:
@@ -4096,11 +4213,23 @@ def render_admin_tab(
         st.caption("Current fixed monthly cost: ****")
 
     is_admin_unlocked = render_admin_access()
+    admin_sections = ["Review/Edit Entries", "Fixed Costs & Balance"]
+    if "admin_section_mode" not in st.session_state:
+        st.session_state["admin_section_mode"] = admin_sections[0]
+    admin_mode = st.segmented_control(
+        "Admin section",
+        options=admin_sections,
+        key="admin_section_mode",
+        default=st.session_state["admin_section_mode"],
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    if admin_mode is None:
+        admin_mode = admin_sections[0]
 
-    admin_review_tab, admin_settings_tab = st.tabs(["Review/Edit Entries", "Fixed Costs & Balance"])
-    with admin_review_tab:
+    if admin_mode == "Review/Edit Entries":
         render_admin_day_review(settings, all_revenue_df, is_admin_unlocked)
-    with admin_settings_tab:
+    if admin_mode == "Fixed Costs & Balance":
         render_admin_settings(settings, is_admin_unlocked)
 
 
@@ -4137,6 +4266,12 @@ def main() -> None:
         st.session_state["clear_expense_inputs"] = False
     if "expense_category_input" not in st.session_state:
         st.session_state["expense_category_input"] = "Other"
+    if "active_app_section" not in st.session_state:
+        st.session_state["active_app_section"] = "Dashboard"
+    if "admin_section_mode" not in st.session_state:
+        st.session_state["admin_section_mode"] = "Review/Edit Entries"
+    if "admin_review_mode" not in st.session_state:
+        st.session_state["admin_review_mode"] = "Revenue entries"
 
     flash_message = st.session_state.pop("flash_message", None)
     if flash_message:
@@ -4160,6 +4295,9 @@ def main() -> None:
             st.session_state["bar_note"] = ""
             st.session_state["wedding_revenue_input"] = ""
             st.session_state["wedding_note"] = ""
+            st.session_state["active_app_section"] = "Dashboard"
+            st.session_state["admin_section_mode"] = "Review/Edit Entries"
+            st.session_state["admin_review_mode"] = "Revenue entries"
             st.session_state["login_pin_invalid"] = False
             st.session_state["sensitive_pin_invalid"] = False
             st.session_state["edit_pin_invalid"] = False
@@ -4230,12 +4368,21 @@ def main() -> None:
     )
 
     render_header(kpis, view_unlocked)
-
-    dashboard_tab, revenue_tab, expense_tab, reports_tab, admin_tab = st.tabs(
-        ["Dashboard", "Add Revenue", "Add Expense", "Reports", "Admin"]
+    app_sections = ["Dashboard", "Add Revenue", "Add Expense", "Reports", "Admin"]
+    if "active_app_section" not in st.session_state:
+        st.session_state["active_app_section"] = app_sections[0]
+    active_section = st.segmented_control(
+        "Main navigation",
+        options=app_sections,
+        key="active_app_section",
+        default=st.session_state["active_app_section"],
+        label_visibility="collapsed",
+        width="stretch",
     )
+    if active_section is None:
+        active_section = app_sections[0]
 
-    with dashboard_tab:
+    if active_section == "Dashboard":
         render_dashboard_tab(
             kpis,
             filtered_revenue_df,
@@ -4246,16 +4393,16 @@ def main() -> None:
             view_unlocked,
         )
 
-    with revenue_tab:
+    if active_section == "Add Revenue":
         render_revenue_tab(all_revenue_df, settings)
 
-    with expense_tab:
+    if active_section == "Add Expense":
         render_expense_tab(settings)
 
-    with reports_tab:
+    if active_section == "Reports":
         render_reports_tab(all_revenue_df, all_expense_df)
 
-    with admin_tab:
+    if active_section == "Admin":
         render_admin_tab(settings, all_revenue_df, view_unlocked)
 
 

@@ -77,6 +77,7 @@ DEFAULT_SETTINGS["Total_Fixed_Cost"] = (
 
 DAILY_COLUMNS = ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
 EXPENSE_COLUMNS = ["Date", "Expense", "Category", "Note", "Month", "Year", "Created_At"]
+REVENUE_TYPES = ("Rooms", "Bar", "Wedding")
 EDIT_PIN_HASH = (
     "8c144858bb5ea1a931069f55943c55a4"
     "27e2530405bbe720e97aae0fda85ee8c"
@@ -157,7 +158,11 @@ def verify_login_pin(pin: str) -> bool:
 
 def normalize_revenue_type(revenue_type: str) -> str:
     candidate = str(revenue_type).strip().lower()
-    return "Bar" if candidate == "bar" else "Rooms"
+    if candidate == "bar":
+        return "Bar"
+    if candidate in {"wedding", "weddings"}:
+        return "Wedding"
+    return "Rooms"
 
 
 def auto_unlock_login() -> None:
@@ -2437,7 +2442,7 @@ def render_login_home() -> bool:
         <div class="login-shell">
             <div class="login-hero">
                 <h1 class="login-title">Serenity Stay Inn Dashboard</h1>
-                <div class="login-subtitle">Secure revenue intelligence for Rooms + Bar performance.</div>
+                <div class="login-subtitle">Secure revenue intelligence for Rooms + Bar + Wedding performance.</div>
                 <div class="login-badge">
                     <span class="login-pulse-dot"></span>
                     Private local access
@@ -2717,7 +2722,7 @@ def render_admin_day_review(
     is_unlocked: bool,
 ) -> None:
     st.markdown("### Admin Entry Review")
-    st.caption("Select a date to load every saved Rooms, Bar, and expense entry for correction.")
+    st.caption("Select a date to load every saved Rooms, Bar, Wedding, and expense entry for correction.")
     review_date = st.date_input("Review date", value=date.today(), key="admin_review_date")
 
     if not is_unlocked:
@@ -3442,16 +3447,21 @@ def _build_smart_insights(
         (all_revenue_df["Year"] == projection_year) & (all_revenue_df["Month"] == projection_month)
     ].copy()
     if not this_month_df.empty:
-        rooms_total = safe_float(
-            this_month_df.loc[this_month_df["Revenue_Type"] == "Rooms", "Revenue"].sum()
+        stream_totals = (
+            this_month_df.groupby("Revenue_Type", as_index=False)["Revenue"]
+            .sum()
+            .sort_values("Revenue", ascending=False)
+            .reset_index(drop=True)
         )
-        bar_total = safe_float(this_month_df.loc[this_month_df["Revenue_Type"] == "Bar", "Revenue"].sum())
-        if rooms_total > bar_total:
-            insights.append(("info", "Rooms are contributing more than Bar this month."))
-        elif bar_total > rooms_total:
-            insights.append(("info", "Bar is contributing more than Rooms this month."))
-        else:
-            insights.append(("info", "Rooms and Bar are contributing equally this month."))
+        if not stream_totals.empty:
+            top_stream = str(stream_totals.loc[0, "Revenue_Type"])
+            top_value = safe_float(stream_totals.loc[0, "Revenue"])
+            insights.append(("info", f"{top_stream} is the top revenue stream this month ({format_rwf(top_value)})."))
+            if len(stream_totals) > 1:
+                second_stream = str(stream_totals.loc[1, "Revenue_Type"])
+                second_value = safe_float(stream_totals.loc[1, "Revenue"])
+                gap = max(top_value - second_value, 0.0)
+                insights.append(("info", f"{top_stream} is ahead of {second_stream} by {format_rwf(gap)}."))
     else:
         insights.append(("info", "No revenue entries have been recorded yet this month."))
 
@@ -3715,7 +3725,7 @@ def render_dashboard_tab(
 def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float]) -> None:
     st.markdown('<div class="section-head">Add Revenue</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Save Rooms and Bar revenue quickly. Each stream can be saved once per date.</div>',
+        '<div class="section-note">Save Rooms, Bar, and Wedding revenue quickly. Each stream can be saved once per date.</div>',
         unsafe_allow_html=True,
     )
     st.caption(
@@ -3729,8 +3739,11 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
     if st.session_state.pop("clear_bar_inputs", False):
         st.session_state["bar_revenue_input"] = ""
         st.session_state["bar_note"] = ""
+    if st.session_state.pop("clear_wedding_inputs", False):
+        st.session_state["wedding_revenue_input"] = ""
+        st.session_state["wedding_note"] = ""
 
-    rooms_col, bar_col = st.columns(2)
+    rooms_col, bar_col, wedding_col = st.columns(3)
 
     with rooms_col:
         with st.container(border=True):
@@ -3788,6 +3801,36 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                     disabled=bar_exists,
                 )
 
+    with wedding_col:
+        with st.container(border=True):
+            st.markdown('<div class="entry-head">Wedding Revenue</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="entry-note">Enter total wedding revenue for one day. Amount format: 25000 or 25,000.</div>',
+                unsafe_allow_html=True,
+            )
+            with st.form("revenue_form_wedding", clear_on_submit=False):
+                wedding_date = st.date_input("Date", value=date.today(), key="wedding_date")
+                wedding_revenue_raw = st.text_input(
+                    "Wedding amount (RWF)",
+                    value="",
+                    placeholder="25,000",
+                    key="wedding_revenue_input",
+                )
+                wedding_note = st.text_input("Wedding note (optional)", key="wedding_note")
+                wedding_exists = revenue_entry_exists(all_revenue_df, wedding_date, "Wedding")
+                if wedding_exists:
+                    st.warning(
+                        "Wedding revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it."
+                    )
+                else:
+                    st.info("No Wedding revenue saved for this date. Save is ready.")
+                save_wedding_pressed = st.form_submit_button(
+                    "Save Wedding Revenue",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=wedding_exists,
+                )
+
     if save_rooms_pressed:
         is_valid_amount, rooms_revenue, rooms_amount_err = parse_money_input(rooms_revenue_raw)
         if not is_valid_amount:
@@ -3809,6 +3852,18 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
         if ok:
             st.session_state["clear_bar_inputs"] = True
             msg = f"Bar revenue saved for {bar_date.strftime('%Y-%m-%d')}."
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+    if save_wedding_pressed:
+        is_valid_amount, wedding_revenue, wedding_amount_err = parse_money_input(wedding_revenue_raw)
+        if not is_valid_amount:
+            st.session_state["flash_message"] = {"ok": False, "message": wedding_amount_err}
+            st.rerun()
+        ok, msg = save_entry(wedding_date, wedding_revenue, wedding_note, "Wedding", settings)
+        if ok:
+            st.session_state["clear_wedding_inputs"] = True
+            msg = f"Wedding revenue saved for {wedding_date.strftime('%Y-%m-%d')}."
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
@@ -3924,6 +3979,11 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         if not filtered_revenue_df.empty
         else 0.0
     )
+    wedding_revenue = (
+        safe_float(filtered_revenue_df.loc[filtered_revenue_df["Revenue_Type"] == "Wedding", "Revenue"].sum())
+        if not filtered_revenue_df.empty
+        else 0.0
+    )
     total_revenue = safe_float(filtered_revenue_df["Revenue"].sum()) if not filtered_revenue_df.empty else 0.0
     total_expense = safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
     net_total = total_revenue - total_expense
@@ -3934,6 +3994,7 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
                 "Total Revenue",
                 "Rooms Revenue",
                 "Bar Revenue",
+                "Wedding Revenue",
                 "Total Expenses",
                 "Net Movement",
                 "Revenue Records",
@@ -3943,6 +4004,7 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
                 format_rwf(total_revenue),
                 format_rwf(rooms_revenue),
                 format_rwf(bar_revenue),
+                format_rwf(wedding_revenue),
                 format_rwf(total_expense),
                 format_rwf(net_total),
                 int(len(filtered_revenue_df)),
@@ -4069,6 +4131,8 @@ def main() -> None:
         st.session_state["clear_rooms_inputs"] = False
     if "clear_bar_inputs" not in st.session_state:
         st.session_state["clear_bar_inputs"] = False
+    if "clear_wedding_inputs" not in st.session_state:
+        st.session_state["clear_wedding_inputs"] = False
     if "clear_expense_inputs" not in st.session_state:
         st.session_state["clear_expense_inputs"] = False
     if "expense_category_input" not in st.session_state:
@@ -4090,6 +4154,12 @@ def main() -> None:
             st.session_state["login_pin_input"] = ""
             st.session_state["sensitive_pin_input"] = ""
             st.session_state["edit_pin_input"] = ""
+            st.session_state["rooms_revenue_input"] = ""
+            st.session_state["rooms_note"] = ""
+            st.session_state["bar_revenue_input"] = ""
+            st.session_state["bar_note"] = ""
+            st.session_state["wedding_revenue_input"] = ""
+            st.session_state["wedding_note"] = ""
             st.session_state["login_pin_invalid"] = False
             st.session_state["sensitive_pin_invalid"] = False
             st.session_state["edit_pin_invalid"] = False

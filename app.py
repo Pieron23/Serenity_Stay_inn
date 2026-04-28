@@ -2301,12 +2301,40 @@ def inject_modern_styles() -> None:
             background: #f8fbff;
             padding: 8px 12px;
             font-weight: 700;
+            color: #1e293b !important;
+            transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+        }
+
+        .stTabs [data-baseweb="tab"] * {
+            color: #1e293b !important;
+            fill: #1e293b !important;
+        }
+
+        .stTabs [data-baseweb="tab"]:hover {
+            background: #eef5ff !important;
+            border-color: #93c5fd !important;
+            color: #0f172a !important;
+        }
+
+        .stTabs [data-baseweb="tab"]:hover * {
+            color: #0f172a !important;
+            fill: #0f172a !important;
+        }
+
+        .stTabs [data-baseweb="tab"]:focus-visible {
+            outline: 2px solid #93c5fd !important;
+            outline-offset: 1px !important;
         }
 
         .stTabs [aria-selected="true"] {
             background: #e8f1ff !important;
             color: #0f172a !important;
             border-color: #93c5fd !important;
+        }
+
+        .stTabs [aria-selected="true"] * {
+            color: #0f172a !important;
+            fill: #0f172a !important;
         }
 
         @media (max-width: 900px) {
@@ -3690,6 +3718,10 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
         '<div class="section-note">Save Rooms and Bar revenue quickly. Each stream can be saved once per date.</div>',
         unsafe_allow_html=True,
     )
+    st.caption(
+        "Entry wording guide: use today's date by default, type amount as 25000 or 25,000, and use note only when needed."
+    )
+    st.caption("If an entry already exists, update or delete it from Admin -> Review/Edit Entries.")
 
     if st.session_state.pop("clear_rooms_inputs", False):
         st.session_state["rooms_revenue_input"] = ""
@@ -3703,21 +3735,24 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
     with rooms_col:
         with st.container(border=True):
             st.markdown('<div class="entry-head">Rooms Revenue</div>', unsafe_allow_html=True)
-            st.markdown('<div class="entry-note">Enter total rooms revenue for one date.</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="entry-note">Enter total rooms revenue for one day. Amount format: 25000 or 25,000.</div>',
+                unsafe_allow_html=True,
+            )
             with st.form("revenue_form_rooms", clear_on_submit=False):
                 rooms_date = st.date_input("Date", value=date.today(), key="rooms_date")
                 rooms_revenue_raw = st.text_input(
-                    "Amount (RWF)",
+                    "Rooms amount (RWF)",
                     value="",
                     placeholder="25,000",
                     key="rooms_revenue_input",
                 )
-                rooms_note = st.text_input("Note (optional)", key="rooms_note")
+                rooms_note = st.text_input("Rooms note (optional)", key="rooms_note")
                 room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
                 if room_exists:
-                    st.warning("Rooms revenue already saved for this date. Use Admin to edit.")
+                    st.warning("Rooms revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
                 else:
-                    st.info("No Rooms revenue saved for this date.")
+                    st.info("No Rooms revenue saved for this date. Save is ready.")
                 save_rooms_pressed = st.form_submit_button(
                     "Save Rooms Revenue",
                     type="primary",
@@ -3728,21 +3763,24 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
     with bar_col:
         with st.container(border=True):
             st.markdown('<div class="entry-head">Bar Revenue</div>', unsafe_allow_html=True)
-            st.markdown('<div class="entry-note">Enter total bar revenue for one date.</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="entry-note">Enter total bar revenue for one day. Amount format: 25000 or 25,000.</div>',
+                unsafe_allow_html=True,
+            )
             with st.form("revenue_form_bar", clear_on_submit=False):
                 bar_date = st.date_input("Date", value=date.today(), key="bar_date")
                 bar_revenue_raw = st.text_input(
-                    "Amount (RWF)",
+                    "Bar amount (RWF)",
                     value="",
                     placeholder="25,000",
                     key="bar_revenue_input",
                 )
-                bar_note = st.text_input("Note (optional)", key="bar_note")
+                bar_note = st.text_input("Bar note (optional)", key="bar_note")
                 bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
                 if bar_exists:
-                    st.warning("Bar revenue already saved for this date. Use Admin to edit.")
+                    st.warning("Bar revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
                 else:
-                    st.info("No Bar revenue saved for this date.")
+                    st.info("No Bar revenue saved for this date. Save is ready.")
                 save_bar_pressed = st.form_submit_button(
                     "Save Bar Revenue",
                     type="primary",

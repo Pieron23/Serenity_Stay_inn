@@ -5,13 +5,14 @@ from calendar import month_name, monthrange
 from datetime import date, datetime, timedelta
 import hashlib
 import hmac
+from io import BytesIO
 import os
 from pathlib import Path
 import re
 import shutil
 import socket
 import subprocess
-from typing import Dict, Tuple
+from typing import Callable, Dict, Tuple
 
 import pandas as pd
 import plotly.express as px
@@ -2089,6 +2090,244 @@ def inject_styles() -> None:
     )
 
 
+def inject_modern_styles() -> None:
+    st.markdown(
+        """
+        <style>
+        :root {
+            --shell-bg: #f3f7fc;
+            --card-bg: #ffffff;
+            --card-border: #d8e4f3;
+            --title-ink: #0f172a;
+            --body-ink: #334155;
+            --muted-ink: #64748b;
+            --accent-blue: #1d4ed8;
+            --accent-green: #0f766e;
+            --accent-orange: #c2410c;
+            --soft-blue: #eff6ff;
+            --soft-green: #ecfdf5;
+            --soft-orange: #fff7ed;
+        }
+
+        .stApp {
+            background: radial-gradient(circle at 8% 0%, #eef5ff 0%, var(--shell-bg) 36%, #f7fafc 100%);
+        }
+
+        .dashboard-header {
+            border: 1px solid #c7d9ef;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+            background: linear-gradient(124deg, #0f4cc8 0%, #1d67dc 52%, #0f766e 100%);
+            box-shadow: 0 14px 28px rgba(30, 64, 175, 0.18);
+            color: #f8fafc;
+        }
+
+        .dashboard-header .title {
+            margin: 0;
+            font-size: 1.85rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+
+        .dashboard-header .subtitle {
+            margin-top: 8px;
+            font-size: 0.98rem;
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+
+        .quick-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .quick-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border-radius: 999px;
+            padding: 6px 12px;
+            font-size: 0.83rem;
+            font-weight: 700;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(15, 23, 42, 0.18);
+            color: #f8fafc;
+        }
+
+        .kpi-modern {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 14px;
+            padding: 14px 14px 12px 14px;
+            min-height: 124px;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            row-gap: 8px;
+        }
+
+        .kpi-modern-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .kpi-modern-title {
+            color: var(--body-ink);
+            font-size: 0.84rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            line-height: 1.25;
+        }
+
+        .kpi-modern-icon {
+            min-width: 34px;
+            height: 34px;
+            border-radius: 10px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.74rem;
+            font-weight: 800;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            background: #eff6ff;
+        }
+
+        .kpi-modern-value {
+            align-self: end;
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--title-ink);
+            line-height: 1.18;
+            overflow-wrap: anywhere;
+        }
+
+        .kpi-modern-value.good { color: var(--accent-green); }
+        .kpi-modern-value.warn { color: var(--accent-orange); }
+        .kpi-modern-value.bad { color: #be123c; }
+
+        .insight-card {
+            border: 1px solid #dbe7f5;
+            border-left: 5px solid #1d4ed8;
+            border-radius: 12px;
+            padding: 10px 12px;
+            background: #ffffff;
+            color: #1e293b;
+            font-weight: 600;
+            margin-bottom: 8px;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+        }
+
+        .insight-card.good {
+            border-left-color: #0f766e;
+            background: var(--soft-green);
+        }
+
+        .insight-card.warn {
+            border-left-color: #c2410c;
+            background: var(--soft-orange);
+        }
+
+        .insight-card.info {
+            border-left-color: #1d4ed8;
+            background: var(--soft-blue);
+        }
+
+        .section-head {
+            margin: 4px 0 4px 0;
+            color: var(--title-ink);
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 0.01em;
+        }
+
+        .section-note {
+            color: var(--muted-ink);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .chart-head {
+            margin-bottom: 6px;
+            color: var(--title-ink);
+            font-size: 1.02rem;
+            font-weight: 800;
+        }
+
+        .entry-head {
+            color: var(--title-ink);
+            font-size: 1.08rem;
+            font-weight: 800;
+            margin-bottom: 4px;
+        }
+
+        .entry-note {
+            color: var(--muted-ink);
+            font-size: 0.88rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        [data-testid="stFormSubmitButton"] button {
+            min-height: 52px;
+            font-size: 0.97rem;
+            letter-spacing: 0.01em;
+        }
+
+        .report-summary td:first-child {
+            font-weight: 700;
+            color: var(--body-ink);
+        }
+
+        .report-summary td:last-child {
+            font-weight: 800;
+            color: var(--title-ink);
+        }
+
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            border: 1px solid #c8daf0;
+            border-radius: 10px;
+            background: #f8fbff;
+            padding: 8px 12px;
+            font-weight: 700;
+        }
+
+        .stTabs [aria-selected="true"] {
+            background: #e8f1ff !important;
+            color: #0f172a !important;
+            border-color: #93c5fd !important;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-header .title {
+                font-size: 1.45rem;
+            }
+
+            .kpi-modern {
+                min-height: 110px;
+            }
+
+            .kpi-modern-value {
+                font-size: 1.16rem;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def inject_login_background() -> None:
     if not LOGIN_BG_FILE.exists():
         return
@@ -2205,17 +2444,16 @@ def render_login_home() -> bool:
     return False
 
 
-def render_kpi_card(title: str, value: str, tone: str = "") -> None:
-    tone_class = f"kpi-{tone}" if tone else ""
-    display_value = str(value)
-    length_class = "kpi-value-long" if len(display_value) >= 18 else ""
+def render_kpi_card(title: str, value: str, tone: str = "", icon: str = "KP") -> None:
+    value_class = "good" if tone == "good" else "warn" if tone == "warn" else "bad" if tone == "bad" else ""
     st.markdown(
         f"""
-        <div class="kpi-card">
-            <p class="kpi-title" style="text-align:center;width:100%;">{title}</p>
-            <div class="kpi-value-slot">
-                <div class="kpi-value {tone_class} {length_class}">{display_value}</div>
+        <div class="kpi-modern">
+            <div class="kpi-modern-head">
+                <div class="kpi-modern-title">{title}</div>
+                <div class="kpi-modern-icon">{icon}</div>
             </div>
+            <div class="kpi-modern-value {value_class}">{value}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -3077,12 +3315,702 @@ def render_dashboard(
         st.dataframe(expense_display_df, use_container_width=True, hide_index=True)
 
 
+def render_chart_card(title: str, renderer: Callable[[], None], subtitle: str = "") -> None:
+    with st.container(border=True):
+        st.markdown(f'<div class="chart-head">{title}</div>', unsafe_allow_html=True)
+        if subtitle:
+            st.caption(subtitle)
+        renderer()
+
+
+def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlocked: bool) -> None:
+    projection_month = int(safe_float(kpis["projection_month"]))
+    projection_year = int(safe_float(kpis["projection_year"]))
+    period_label = f"{month_name[projection_month]} {projection_year}"
+
+    if not view_unlocked:
+        status_text = "Protected view active"
+        chip_1 = "Current Balance: ****"
+        chip_2 = "Fixed Cost: ****"
+        chip_3 = "Break-even Progress: ****"
+    else:
+        status_text = (
+            "On track to cover fixed costs"
+            if bool(kpis["is_revenue_break_even"])
+            else "Not yet at fixed-cost break-even"
+        )
+        chip_1 = f"Current Balance: {format_rwf(safe_float(kpis['current_available_balance']))}"
+        chip_2 = f"Fixed Cost: {format_rwf(safe_float(kpis['fixed_cost']))}"
+        chip_3 = f"Break-even Progress: {safe_float(kpis['net_progress']) * 100:.1f}%"
+
+    st.markdown(
+        f"""
+        <div class="dashboard-header">
+            <div class="title">Serenity Stay Inn</div>
+            <div class="subtitle">Modern financial dashboard | Current month: {period_label} | {status_text}</div>
+            <div class="quick-chip-row">
+                <span class="quick-chip">{chip_1}</span>
+                <span class="quick-chip">{chip_2}</span>
+                <span class="quick-chip">{chip_3}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_kpi_grid(cards: list[tuple[str, str, str, str]], columns_per_row: int = 4) -> None:
+    if not cards:
+        return
+    for start in range(0, len(cards), columns_per_row):
+        row_cards = cards[start : start + columns_per_row]
+        cols = st.columns(columns_per_row)
+        for idx, card in enumerate(row_cards):
+            title, value, tone, icon = card
+            with cols[idx]:
+                render_kpi_card(title, value, tone=tone, icon=icon)
+
+
+def _build_smart_insights(
+    kpis: Dict[str, float | str | bool | date | None],
+    all_revenue_df: pd.DataFrame,
+    view_unlocked: bool,
+) -> list[tuple[str, str]]:
+    insights: list[tuple[str, str]] = []
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    if view_unlocked:
+        if bool(kpis["is_revenue_break_even"]):
+            insights.append(("good", "You are on track to cover fixed costs this month."))
+        else:
+            remaining = safe_float(kpis["remaining_break_even"])
+            insights.append(("warn", f"You need {format_rwf(remaining)} more to break even."))
+    else:
+        insights.append(("info", "Break-even status is protected. Enter PIN from sidebar to view protected numbers."))
+
+    today_revenue = (
+        safe_float(all_revenue_df.loc[all_revenue_df["Date"] == today, "Revenue"].sum())
+        if not all_revenue_df.empty
+        else 0.0
+    )
+    yesterday_revenue = (
+        safe_float(all_revenue_df.loc[all_revenue_df["Date"] == yesterday, "Revenue"].sum())
+        if not all_revenue_df.empty
+        else 0.0
+    )
+    if today_revenue > yesterday_revenue:
+        diff = today_revenue - yesterday_revenue
+        insights.append(("good", f"Today's revenue is higher than yesterday by {format_rwf(diff)}."))
+    elif today_revenue < yesterday_revenue:
+        diff = yesterday_revenue - today_revenue
+        insights.append(("warn", f"Today's revenue is lower than yesterday by {format_rwf(diff)}."))
+    else:
+        insights.append(("info", "Today's revenue is equal to yesterday."))
+
+    projection_year = int(safe_float(kpis["projection_year"]))
+    projection_month = int(safe_float(kpis["projection_month"]))
+    this_month_df = all_revenue_df[
+        (all_revenue_df["Year"] == projection_year) & (all_revenue_df["Month"] == projection_month)
+    ].copy()
+    if not this_month_df.empty:
+        rooms_total = safe_float(
+            this_month_df.loc[this_month_df["Revenue_Type"] == "Rooms", "Revenue"].sum()
+        )
+        bar_total = safe_float(this_month_df.loc[this_month_df["Revenue_Type"] == "Bar", "Revenue"].sum())
+        if rooms_total > bar_total:
+            insights.append(("info", "Rooms are contributing more than Bar this month."))
+        elif bar_total > rooms_total:
+            insights.append(("info", "Bar is contributing more than Rooms this month."))
+        else:
+            insights.append(("info", "Rooms and Bar are contributing equally this month."))
+    else:
+        insights.append(("info", "No revenue entries have been recorded yet this month."))
+
+    return insights
+
+
+def render_dashboard_tab(
+    kpis: Dict[str, float | str | bool | date | None],
+    month_revenue_df: pd.DataFrame,
+    all_revenue_df: pd.DataFrame,
+    month_expense_df: pd.DataFrame,
+    all_expense_df: pd.DataFrame,
+    settings: Dict[str, float],
+    view_unlocked: bool,
+) -> None:
+    st.markdown('<div class="section-head">Smart Insights</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Simple daily guidance so you can react quickly.</div>',
+        unsafe_allow_html=True,
+    )
+    for tone, message in _build_smart_insights(kpis, all_revenue_df, view_unlocked):
+        st.markdown(f'<div class="insight-card {tone}">{message}</div>', unsafe_allow_html=True)
+
+    key_kpis = [
+        ("Today's Revenue", format_rwf(safe_float(kpis["today_revenue"])), "", "DAY"),
+        ("This Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), "", "MON"),
+        ("This Month Expenses", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "EXP"),
+        (
+            "Current Balance",
+            protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked),
+            "good",
+            "BAL",
+        ),
+        ("Fixed Monthly Cost", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
+        (
+            "Estimated Profit/Loss",
+            protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
+            "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
+            "P/L",
+        ),
+        (
+            "Break-even Progress",
+            protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
+            "good" if (view_unlocked and safe_float(kpis["net_progress"]) >= 1) else "warn",
+            "BE%",
+        ),
+    ]
+
+    st.markdown('<div class="section-head">Key KPIs</div>', unsafe_allow_html=True)
+    _render_kpi_grid(key_kpis, columns_per_row=4)
+
+    best_day = kpis["best_day"]
+    worst_day = kpis["worst_day"]
+    best_day_label = "No data"
+    worst_day_label = "No data"
+    if best_day is not None:
+        best_day_date = best_day["Date"]
+        best_day_text = best_day_date.strftime("%Y-%m-%d") if hasattr(best_day_date, "strftime") else str(best_day_date)
+        best_day_label = f"{best_day_text} | {format_rwf(safe_float(best_day['Revenue']))}"
+    if worst_day is not None:
+        worst_day_date = worst_day["Date"]
+        worst_day_text = worst_day_date.strftime("%Y-%m-%d") if hasattr(worst_day_date, "strftime") else str(worst_day_date)
+        worst_day_label = f"{worst_day_text} | {format_rwf(safe_float(worst_day['Revenue']))}"
+
+    advanced_kpis = [
+        ("Average Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), "", "ADR"),
+        ("Average Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn", "ADE"),
+        (
+            "Estimated Month-end Revenue",
+            protected_currency(safe_float(kpis["est_month_end_revenue"]), view_unlocked),
+            "",
+            "EMR",
+        ),
+        (
+            "Estimated Month-end Expense",
+            protected_currency(safe_float(kpis["est_month_end_expense"]), view_unlocked),
+            "warn",
+            "EME",
+        ),
+        (
+            "Projected Net Revenue",
+            protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked),
+            "good" if safe_float(kpis["projected_net_revenue"]) >= 0 else "bad",
+            "NET",
+        ),
+        (
+            "Remaining To Break-even",
+            protected_currency(safe_float(kpis["remaining_break_even"]), view_unlocked),
+            "warn",
+            "REM",
+        ),
+        ("Best Revenue Day", best_day_label, "good", "TOP"),
+        ("Lowest Revenue Day", worst_day_label, "warn", "LOW"),
+    ]
+
+    with st.expander("Advanced details", expanded=False):
+        _render_kpi_grid(advanced_kpis, columns_per_row=4)
+
+    st.markdown('<div class="section-head">Performance Charts</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Clean trend visuals for revenue, expenses, and break-even coverage.</div>',
+        unsafe_allow_html=True,
+    )
+
+    chart_col_1, chart_col_2 = st.columns(2)
+
+    with chart_col_1:
+        def _revenue_trend_chart() -> None:
+            if month_revenue_df.empty:
+                st.info("No revenue records for this month yet.")
+                return
+            trend_df = (
+                month_revenue_df.groupby("Date", as_index=False)["Revenue"]
+                .sum()
+                .sort_values("Date")
+                .reset_index(drop=True)
+            )
+            trend_df["Date"] = pd.to_datetime(trend_df["Date"]).dt.normalize()
+            fig_trend = px.line(
+                trend_df,
+                x="Date",
+                y="Revenue",
+                markers=True,
+                template="plotly_white",
+                color_discrete_sequence=["#1d4ed8"],
+            )
+            fig_trend.update_traces(line_width=3, marker_size=8)
+            style_plotly_chart(fig_trend, is_date_x=True, date_values=trend_df["Date"], y_is_currency=True)
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+        render_chart_card("Revenue Trend", _revenue_trend_chart, "Daily total revenue for the current month.")
+
+    with chart_col_2:
+        def _monthly_bar_chart() -> None:
+            monthly_df = build_monthly_summary(all_revenue_df)
+            if monthly_df.empty:
+                st.info("No monthly revenue data available yet.")
+                return
+            fig_monthly = px.bar(
+                monthly_df,
+                x="Period",
+                y="Revenue",
+                template="plotly_white",
+                color="Revenue",
+                color_continuous_scale=["#e0ecff", "#60a5fa", "#1d4ed8"],
+            )
+            fig_monthly.update_layout(coloraxis_showscale=False)
+            style_plotly_chart(fig_monthly, y_is_currency=True)
+            st.plotly_chart(fig_monthly, use_container_width=True)
+
+        render_chart_card("Monthly Revenue", _monthly_bar_chart, "Month-by-month revenue performance.")
+
+    chart_col_3, chart_col_4 = st.columns(2)
+
+    with chart_col_3:
+        def _revenue_vs_expense_chart() -> None:
+            rev_daily = pd.DataFrame(columns=["Date", "Revenue"])
+            exp_daily = pd.DataFrame(columns=["Date", "Expense"])
+            if not month_revenue_df.empty:
+                rev_daily = month_revenue_df.groupby("Date", as_index=False)["Revenue"].sum()
+            if not month_expense_df.empty:
+                exp_daily = month_expense_df.groupby("Date", as_index=False)["Expense"].sum()
+            compare_df = pd.merge(rev_daily, exp_daily, on="Date", how="outer").fillna(0.0).sort_values("Date")
+            if compare_df.empty:
+                st.info("No revenue or expense records for this month yet.")
+                return
+            compare_df["Date"] = pd.to_datetime(compare_df["Date"]).dt.normalize()
+            long_df = compare_df.melt(
+                id_vars="Date",
+                value_vars=["Revenue", "Expense"],
+                var_name="Metric",
+                value_name="Amount",
+            )
+            fig_compare = px.bar(
+                long_df,
+                x="Date",
+                y="Amount",
+                color="Metric",
+                barmode="group",
+                template="plotly_white",
+                color_discrete_map={"Revenue": "#1d4ed8", "Expense": "#ea580c"},
+            )
+            style_plotly_chart(fig_compare, is_date_x=True, date_values=compare_df["Date"], y_is_currency=True)
+            st.plotly_chart(fig_compare, use_container_width=True)
+
+        render_chart_card(
+            "Revenue vs Expense",
+            _revenue_vs_expense_chart,
+            "Daily revenue compared with non-fixed expenses.",
+        )
+
+    with chart_col_4:
+        def _break_even_progress_chart() -> None:
+            if not view_unlocked:
+                st.info("Break-even progress is protected. Unlock protected numbers from the sidebar.")
+                return
+            progress_df = pd.DataFrame(
+                {
+                    "Metric": ["Current Balance", "Projected Net Revenue", "Fixed Cost Target"],
+                    "Amount": [
+                        safe_float(kpis["current_available_balance"]),
+                        safe_float(kpis["projected_net_revenue"]),
+                        safe_float(kpis["fixed_cost"]),
+                    ],
+                }
+            )
+            fig_break_even = px.bar(
+                progress_df,
+                x="Metric",
+                y="Amount",
+                template="plotly_white",
+                color="Metric",
+                color_discrete_map={
+                    "Current Balance": "#0f766e",
+                    "Projected Net Revenue": "#1d4ed8",
+                    "Fixed Cost Target": "#ea580c",
+                },
+            )
+            style_plotly_chart(fig_break_even, y_is_currency=True)
+            st.plotly_chart(fig_break_even, use_container_width=True)
+
+        render_chart_card(
+            "Break-even Progress",
+            _break_even_progress_chart,
+            "Coverage comparison against fixed monthly cost.",
+        )
+
+    def _fixed_cost_donut_chart() -> None:
+        if not view_unlocked:
+            st.info("Fixed cost breakdown is protected. Unlock protected numbers from the sidebar.")
+            return
+        costs_df = pd.DataFrame(
+            {
+                "Category": ["House Rent", "Labor", "Water Bill", "Electricity"],
+                "Amount": [
+                    safe_float(settings["House_Rent"]),
+                    safe_float(settings["Labor"]),
+                    safe_float(settings["Water_Bill"]),
+                    safe_float(settings["Electricity"]),
+                ],
+            }
+        )
+        fig_costs = px.pie(
+            costs_df,
+            names="Category",
+            values="Amount",
+            hole=0.58,
+            template="plotly_white",
+            color_discrete_sequence=["#1d4ed8", "#0ea5e9", "#f59e0b", "#ea580c"],
+        )
+        style_plotly_chart(fig_costs)
+        st.plotly_chart(fig_costs, use_container_width=True)
+
+    render_chart_card(
+        "Fixed Cost Breakdown",
+        _fixed_cost_donut_chart,
+        "Donut chart of monthly fixed-cost composition.",
+    )
+
+
+def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float]) -> None:
+    st.markdown('<div class="section-head">Add Revenue</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Save Rooms and Bar revenue quickly. Each stream can be saved once per date.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.pop("clear_rooms_inputs", False):
+        st.session_state["rooms_revenue_input"] = ""
+        st.session_state["rooms_note"] = ""
+    if st.session_state.pop("clear_bar_inputs", False):
+        st.session_state["bar_revenue_input"] = ""
+        st.session_state["bar_note"] = ""
+
+    rooms_col, bar_col = st.columns(2)
+
+    with rooms_col:
+        with st.container(border=True):
+            st.markdown('<div class="entry-head">Rooms Revenue</div>', unsafe_allow_html=True)
+            st.markdown('<div class="entry-note">Enter total rooms revenue for one date.</div>', unsafe_allow_html=True)
+            with st.form("revenue_form_rooms", clear_on_submit=False):
+                rooms_date = st.date_input("Date", value=date.today(), key="rooms_date")
+                rooms_revenue_raw = st.text_input(
+                    "Amount (RWF)",
+                    value="",
+                    placeholder="25,000",
+                    key="rooms_revenue_input",
+                )
+                rooms_note = st.text_input("Note (optional)", key="rooms_note")
+                room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
+                if room_exists:
+                    st.warning("Rooms revenue already saved for this date. Use Admin to edit.")
+                else:
+                    st.info("No Rooms revenue saved for this date.")
+                save_rooms_pressed = st.form_submit_button(
+                    "Save Rooms Revenue",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=room_exists,
+                )
+
+    with bar_col:
+        with st.container(border=True):
+            st.markdown('<div class="entry-head">Bar Revenue</div>', unsafe_allow_html=True)
+            st.markdown('<div class="entry-note">Enter total bar revenue for one date.</div>', unsafe_allow_html=True)
+            with st.form("revenue_form_bar", clear_on_submit=False):
+                bar_date = st.date_input("Date", value=date.today(), key="bar_date")
+                bar_revenue_raw = st.text_input(
+                    "Amount (RWF)",
+                    value="",
+                    placeholder="25,000",
+                    key="bar_revenue_input",
+                )
+                bar_note = st.text_input("Note (optional)", key="bar_note")
+                bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
+                if bar_exists:
+                    st.warning("Bar revenue already saved for this date. Use Admin to edit.")
+                else:
+                    st.info("No Bar revenue saved for this date.")
+                save_bar_pressed = st.form_submit_button(
+                    "Save Bar Revenue",
+                    type="primary",
+                    use_container_width=True,
+                    disabled=bar_exists,
+                )
+
+    if save_rooms_pressed:
+        is_valid_amount, rooms_revenue, rooms_amount_err = parse_money_input(rooms_revenue_raw)
+        if not is_valid_amount:
+            st.session_state["flash_message"] = {"ok": False, "message": rooms_amount_err}
+            st.rerun()
+        ok, msg = save_entry(rooms_date, rooms_revenue, rooms_note, "Rooms", settings)
+        if ok:
+            st.session_state["clear_rooms_inputs"] = True
+            msg = f"Rooms revenue saved for {rooms_date.strftime('%Y-%m-%d')}."
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+    if save_bar_pressed:
+        is_valid_amount, bar_revenue, bar_amount_err = parse_money_input(bar_revenue_raw)
+        if not is_valid_amount:
+            st.session_state["flash_message"] = {"ok": False, "message": bar_amount_err}
+            st.rerun()
+        ok, msg = save_entry(bar_date, bar_revenue, bar_note, "Bar", settings)
+        if ok:
+            st.session_state["clear_bar_inputs"] = True
+            msg = f"Bar revenue saved for {bar_date.strftime('%Y-%m-%d')}."
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+
+def render_expense_tab(settings: Dict[str, float]) -> None:
+    st.markdown('<div class="section-head">Add Expense</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Record non-fixed expenses such as stock, cleaning, and transport.</div>',
+        unsafe_allow_html=True,
+    )
+
+    expense_categories = ["Bar Stock", "Cleaning", "Maintenance", "Transport", "Other"]
+
+    if st.session_state.pop("clear_expense_inputs", False):
+        st.session_state["expense_amount_input"] = ""
+        st.session_state["expense_category_input"] = "Other"
+        st.session_state["expense_note_input"] = ""
+
+    if "expense_category_input" not in st.session_state or st.session_state["expense_category_input"] not in expense_categories:
+        st.session_state["expense_category_input"] = "Other"
+
+    with st.container(border=True):
+        with st.form("expense_form", clear_on_submit=False):
+            expense_date = st.date_input("Date", value=date.today(), key="expense_date")
+            expense_amount_raw = st.text_input(
+                "Amount (RWF)",
+                value="",
+                placeholder="12,000",
+                key="expense_amount_input",
+            )
+            expense_category = st.selectbox(
+                "Category",
+                options=expense_categories,
+                key="expense_category_input",
+            )
+            expense_note = st.text_input("Note (optional)", key="expense_note_input")
+            save_expense_pressed = st.form_submit_button(
+                "Save Expense",
+                type="primary",
+                use_container_width=True,
+            )
+
+    if save_expense_pressed:
+        is_valid_expense, expense_amount, expense_amount_err = parse_expense_input(expense_amount_raw)
+        if not is_valid_expense:
+            st.session_state["flash_message"] = {"ok": False, "message": expense_amount_err}
+            st.rerun()
+        ok, msg = save_expense_entry(expense_date, expense_amount, expense_category, expense_note, settings)
+        if ok:
+            st.session_state["clear_expense_inputs"] = True
+            msg = f"Expense saved for {expense_date.strftime('%Y-%m-%d')}."
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+
+def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFrame) -> None:
+    st.markdown('<div class="section-head">Reports</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Filter by month and year, review records, and download data.</div>',
+        unsafe_allow_html=True,
+    )
+
+    revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
+    expense_years = all_expense_df["Year"].unique().tolist() if not all_expense_df.empty else []
+    years = sorted({*revenue_years, *expense_years})
+    year_options = ["All"] + [str(y) for y in years]
+    if str(date.today().year) in year_options:
+        default_year_index = year_options.index(str(date.today().year))
+    else:
+        default_year_index = 0
+
+    month_options = ["All"] + [month_name[m] for m in range(1, 13)]
+    default_month_index = date.today().month
+
+    filter_col_1, filter_col_2 = st.columns(2)
+    selected_year = filter_col_1.selectbox(
+        "Year",
+        options=year_options,
+        index=default_year_index,
+        key="reports_year_filter",
+    )
+    selected_month = filter_col_2.selectbox(
+        "Month",
+        options=month_options,
+        index=default_month_index,
+        key="reports_month_filter",
+    )
+
+    filtered_revenue_df = period_from_filters(
+        all_revenue_df,
+        selected_year,
+        selected_month,
+        False,
+        date.today(),
+        date.today(),
+    )
+    filtered_expense_df = period_from_filters(
+        all_expense_df,
+        selected_year,
+        selected_month,
+        False,
+        date.today(),
+        date.today(),
+    )
+
+    rooms_revenue = (
+        safe_float(filtered_revenue_df.loc[filtered_revenue_df["Revenue_Type"] == "Rooms", "Revenue"].sum())
+        if not filtered_revenue_df.empty
+        else 0.0
+    )
+    bar_revenue = (
+        safe_float(filtered_revenue_df.loc[filtered_revenue_df["Revenue_Type"] == "Bar", "Revenue"].sum())
+        if not filtered_revenue_df.empty
+        else 0.0
+    )
+    total_revenue = safe_float(filtered_revenue_df["Revenue"].sum()) if not filtered_revenue_df.empty else 0.0
+    total_expense = safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
+    net_total = total_revenue - total_expense
+
+    summary_df = pd.DataFrame(
+        {
+            "Metric": [
+                "Total Revenue",
+                "Rooms Revenue",
+                "Bar Revenue",
+                "Total Expenses",
+                "Net Movement",
+                "Revenue Records",
+                "Expense Records",
+            ],
+            "Value": [
+                format_rwf(total_revenue),
+                format_rwf(rooms_revenue),
+                format_rwf(bar_revenue),
+                format_rwf(total_expense),
+                format_rwf(net_total),
+                int(len(filtered_revenue_df)),
+                int(len(filtered_expense_df)),
+            ],
+        }
+    )
+
+    st.markdown("#### Summary")
+    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Revenue Records")
+    if filtered_revenue_df.empty:
+        st.info("No revenue records found for the selected month/year.")
+    else:
+        revenue_display_df = filtered_revenue_df.copy()
+        revenue_display_df["Date"] = pd.to_datetime(revenue_display_df["Date"]).dt.strftime("%Y-%m-%d")
+        revenue_display_df["Revenue"] = revenue_display_df["Revenue"].map(format_rwf)
+        revenue_display_df = revenue_display_df[
+            ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
+        ].rename(columns={"Revenue_Type": "Revenue Stream"})
+        st.dataframe(revenue_display_df, use_container_width=True, hide_index=True)
+
+    st.markdown("#### Expense Records")
+    if filtered_expense_df.empty:
+        st.info("No expense records found for the selected month/year.")
+    else:
+        expense_display_df = filtered_expense_df.copy()
+        expense_display_df["Date"] = pd.to_datetime(expense_display_df["Date"]).dt.strftime("%Y-%m-%d")
+        expense_display_df["Expense"] = expense_display_df["Expense"].map(format_rwf)
+        st.dataframe(expense_display_df, use_container_width=True, hide_index=True)
+
+    download_col_1, download_col_2, download_col_3 = st.columns(3)
+
+    revenue_csv = filtered_revenue_df.to_csv(index=False).encode("utf-8")
+    expense_csv = filtered_expense_df.to_csv(index=False).encode("utf-8")
+    report_file_key = f"{selected_year}_{selected_month.replace(' ', '_')}".lower()
+
+    download_col_1.download_button(
+        "Download Revenue CSV",
+        data=revenue_csv,
+        file_name=f"serenity_revenue_{report_file_key}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    download_col_2.download_button(
+        "Download Expense CSV",
+        data=expense_csv,
+        file_name=f"serenity_expense_{report_file_key}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+    export_buffer = BytesIO()
+    with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
+        filtered_revenue_df.to_excel(writer, index=False, sheet_name="Revenue")
+        filtered_expense_df.to_excel(writer, index=False, sheet_name="Expenses")
+        summary_df.to_excel(writer, index=False, sheet_name="Summary")
+    export_buffer.seek(0)
+
+    download_col_3.download_button(
+        "Download Excel Report",
+        data=export_buffer.getvalue(),
+        file_name=f"serenity_report_{report_file_key}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+    )
+
+
+def render_admin_tab(
+    settings: Dict[str, float],
+    all_revenue_df: pd.DataFrame,
+    view_unlocked: bool,
+) -> None:
+    st.markdown('<div class="section-head">Admin</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Admin PIN required for settings changes and entry corrections.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if USE_POSTGRES:
+        st.info("Storage backend: PostgreSQL (DATABASE_URL active).")
+    else:
+        st.info(f"Data file location: {EXCEL_FILE}")
+
+    if view_unlocked:
+        st.caption(f"Current fixed monthly cost: {format_rwf(safe_float(settings['Total_Fixed_Cost']))}")
+    else:
+        st.caption("Current fixed monthly cost: ****")
+
+    is_admin_unlocked = render_admin_access()
+
+    admin_review_tab, admin_settings_tab = st.tabs(["Review/Edit Entries", "Fixed Costs & Balance"])
+    with admin_review_tab:
+        render_admin_day_review(settings, all_revenue_df, is_admin_unlocked)
+    with admin_settings_tab:
+        render_admin_settings(settings, is_admin_unlocked)
+
+
 # -----------------------------
 # Main app
 # -----------------------------
 def main() -> None:
     st.set_page_config(page_title=APP_TITLE, layout="wide")
     inject_styles()
+    inject_modern_styles()
     inject_login_background()
     inject_auto_pin_blur_script()
 
@@ -3093,13 +4021,6 @@ def main() -> None:
     settings = read_settings()
     all_revenue_df = read_daily_data()
     all_expense_df = read_expense_data()
-    st.title(APP_TITLE)
-    st.caption("Local, offline revenue intelligence for Rooms + Bar operations.")
-    if USE_POSTGRES:
-        st.caption("Storage backend: PostgreSQL (persistent cloud database).")
-    else:
-        st.caption(f"Database file: {EXCEL_FILE}")
-
     if "view_unlocked" not in st.session_state:
         st.session_state["view_unlocked"] = False
     if "edit_unlocked" not in st.session_state:
@@ -3113,7 +4034,7 @@ def main() -> None:
     if "clear_expense_inputs" not in st.session_state:
         st.session_state["clear_expense_inputs"] = False
     if "expense_category_input" not in st.session_state:
-        st.session_state["expense_category_input"] = "Unexpected"
+        st.session_state["expense_category_input"] = "Other"
 
     flash_message = st.session_state.pop("flash_message", None)
     if flash_message:
@@ -3139,39 +4060,6 @@ def main() -> None:
 
         st.markdown("---")
         view_unlocked = render_sensitive_numbers_access()
-        edit_unlocked = render_admin_access()
-
-        st.markdown("---")
-        st.header("Filters")
-
-        revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
-        expense_years = all_expense_df["Year"].unique().tolist() if not all_expense_df.empty else []
-        combined_years = sorted({*revenue_years, *expense_years})
-        years = combined_years if combined_years else [date.today().year]
-        year_options = ["All"] + [str(y) for y in years]
-        month_options = ["All"] + [month_name[m] for m in range(1, 13)]
-
-        selected_year = st.selectbox("Year", options=year_options, index=0)
-        selected_month = st.selectbox("Month", options=month_options, index=0)
-
-        use_custom_range = st.checkbox("Use custom date range", value=False)
-        min_candidates = []
-        max_candidates = []
-        if not all_revenue_df.empty:
-            min_candidates.append(all_revenue_df["Date"].min())
-            max_candidates.append(all_revenue_df["Date"].max())
-        if not all_expense_df.empty:
-            min_candidates.append(all_expense_df["Date"].min())
-            max_candidates.append(all_expense_df["Date"].max())
-
-        default_start = min(min_candidates) if min_candidates else date.today().replace(day=1)
-        default_end = max(max_candidates) if max_candidates else date.today()
-
-        start_date = st.date_input("Start date", value=default_start)
-        end_date = st.date_input("End date", value=default_end)
-
-        if start_date > end_date:
-            st.warning("Start date cannot be later than end date.")
 
         st.markdown("---")
         public_app_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
@@ -3180,12 +4068,12 @@ def main() -> None:
             st.code(public_app_url)
 
         st.markdown("---")
-        st.markdown("### Data Persistence")
+        st.markdown("### Data")
         if USE_POSTGRES:
-            st.caption("Entries are saved directly to PostgreSQL on every Save/Update/Delete.")
+            st.caption("Backend: PostgreSQL")
             st.code("DATABASE_URL is active")
         else:
-            st.caption("Entries are saved directly to Excel on every Save/Update/Delete and remain after restart.")
+            st.caption("Backend: Excel")
             st.code(str(EXCEL_FILE))
 
         st.markdown("---")
@@ -3203,271 +4091,24 @@ def main() -> None:
             st.write("Electricity: ****")
             st.write("Total Fixed Cost: ****")
 
-    if edit_unlocked:
-        st.markdown("### Admin Workspace")
-        admin_review_tab, admin_settings_tab = st.tabs(["Entry review", "Settings"])
-        with admin_review_tab:
-            render_admin_day_review(settings, all_revenue_df, edit_unlocked)
-        with admin_settings_tab:
-            render_admin_settings(settings, edit_unlocked)
-
-    st.markdown("### Revenue Entry")
-    st.caption(
-        "Rooms and Bar revenues are saved independently, once per date. "
-        "Save is available for new dates. Use Admin Entry Review for precise corrections."
-    )
-
-    if st.session_state.pop("clear_rooms_inputs", False):
-        st.session_state["rooms_revenue_input"] = ""
-        st.session_state["rooms_note"] = ""
-    if st.session_state.pop("clear_bar_inputs", False):
-        st.session_state["bar_revenue_input"] = ""
-        st.session_state["bar_note"] = ""
-
-    room_col, bar_col = st.columns(2)
-
-    with room_col:
-        st.markdown("#### Rooms")
-        with st.form("revenue_form_rooms", clear_on_submit=False):
-            rooms_date = st.date_input("Date", value=date.today(), key="rooms_date")
-            rooms_revenue_raw = st.text_input(
-                "Revenue (RWF)",
-                value="",
-                placeholder="Type amount (example: 25000)",
-                key="rooms_revenue_input",
-            )
-            rooms_note = st.text_input("Optional note", key="rooms_note")
-            room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
-
-            if room_exists:
-                st.caption("Rooms revenue already exists for this date. Save is locked; correct it in Admin Entry Review.")
-            else:
-                st.caption("No Rooms revenue saved for this date. Save is available.")
-
-            rb1, rb2 = st.columns(2)
-            save_rooms_pressed = rb1.form_submit_button(
-                "Save",
-                type="primary",
-                use_container_width=True,
-                disabled=room_exists,
-            )
-            update_rooms_pressed = False
-            delete_rooms_pressed = False
-            refresh_rooms_pressed = rb2.form_submit_button(
-                "Refresh",
-                type="primary",
-                use_container_width=True,
-            )
-
-    with bar_col:
-        st.markdown("#### Bar")
-        with st.form("revenue_form_bar", clear_on_submit=False):
-            bar_date = st.date_input("Date", value=date.today(), key="bar_date")
-            bar_revenue_raw = st.text_input(
-                "Revenue (RWF)",
-                value="",
-                placeholder="Type amount (example: 18000)",
-                key="bar_revenue_input",
-            )
-            bar_note = st.text_input("Optional note", key="bar_note")
-            bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
-
-            if bar_exists:
-                st.caption("Bar revenue already exists for this date. Save is locked; correct it in Admin Entry Review.")
-            else:
-                st.caption("No Bar revenue saved for this date. Save is available.")
-
-            bb1, bb2 = st.columns(2)
-            save_bar_pressed = bb1.form_submit_button(
-                "Save",
-                type="primary",
-                use_container_width=True,
-                disabled=bar_exists,
-            )
-            update_bar_pressed = False
-            delete_bar_pressed = False
-            refresh_bar_pressed = bb2.form_submit_button(
-                "Refresh",
-                type="primary",
-                use_container_width=True,
-            )
-
-    if save_rooms_pressed:
-        is_valid_amount, rooms_revenue, rooms_amount_err = parse_money_input(rooms_revenue_raw)
-        if not is_valid_amount:
-            st.session_state["flash_message"] = {"ok": False, "message": rooms_amount_err}
-            st.rerun()
-        ok, msg = save_entry(rooms_date, rooms_revenue, rooms_note, "Rooms", settings)
-        if ok:
-            st.session_state["clear_rooms_inputs"] = True
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if update_rooms_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Update is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        if not revenue_entry_exists(all_revenue_df, rooms_date, "Rooms"):
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "No saved Rooms revenue for this date. Save first, then update from Admin Entry Review.",
-            }
-            st.rerun()
-        is_valid_amount, rooms_revenue, rooms_amount_err = parse_money_input(rooms_revenue_raw)
-        if not is_valid_amount:
-            st.session_state["flash_message"] = {"ok": False, "message": rooms_amount_err}
-            st.rerun()
-        ok, msg = update_entry(rooms_date, rooms_revenue, rooms_note, "Rooms", settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if delete_rooms_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Delete is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        ok, msg = delete_entry(rooms_date, "Rooms", settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if save_bar_pressed:
-        is_valid_amount, bar_revenue, bar_amount_err = parse_money_input(bar_revenue_raw)
-        if not is_valid_amount:
-            st.session_state["flash_message"] = {"ok": False, "message": bar_amount_err}
-            st.rerun()
-        ok, msg = save_entry(bar_date, bar_revenue, bar_note, "Bar", settings)
-        if ok:
-            st.session_state["clear_bar_inputs"] = True
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if update_bar_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Update is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        if not revenue_entry_exists(all_revenue_df, bar_date, "Bar"):
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "No saved Bar revenue for this date. Save first, then update from Admin Entry Review.",
-            }
-            st.rerun()
-        is_valid_amount, bar_revenue, bar_amount_err = parse_money_input(bar_revenue_raw)
-        if not is_valid_amount:
-            st.session_state["flash_message"] = {"ok": False, "message": bar_amount_err}
-            st.rerun()
-        ok, msg = update_entry(bar_date, bar_revenue, bar_note, "Bar", settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if delete_bar_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Delete is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        ok, msg = delete_entry(bar_date, "Bar", settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if refresh_rooms_pressed or refresh_bar_pressed:
-        st.rerun()
-
-    if st.session_state.pop("clear_expense_inputs", False):
-        st.session_state["expense_amount_input"] = ""
-        st.session_state["expense_category_input"] = "Unexpected"
-        st.session_state["expense_note_input"] = ""
-
-    st.markdown("### Overall Non-Fixed Cost Entry Form")
-    st.caption("Use this section for all unexpected/non-fixed costs, including Bar expenses.")
-    with st.form("expense_form", clear_on_submit=False):
-        expense_cols = st.columns([1, 1, 1, 2])
-        expense_date = expense_cols[0].date_input("Expense date", value=date.today())
-        expense_amount_raw = expense_cols[1].text_input(
-            "Expense (RWF)",
-            value="",
-            placeholder="Type amount (example: 12000)",
-            key="expense_amount_input",
-        )
-        expense_category = expense_cols[2].text_input("Category", key="expense_category_input")
-        expense_note = expense_cols[3].text_input("Expense note", key="expense_note_input")
-        st.caption(
-            "Non-fixed expenses can be saved multiple times for the same date. Use Admin Entry Review to edit or delete a specific entry."
-        )
-
-        e1, e2 = st.columns([1, 1])
-        save_expense_pressed = e1.form_submit_button("Save", type="primary", use_container_width=True)
-        update_expense_pressed = False
-        delete_expense_pressed = False
-        refresh_expense_pressed = e2.form_submit_button(
-            "Refresh",
-            type="primary",
-            use_container_width=True,
-        )
-
-    if save_expense_pressed:
-        is_valid_expense, expense_amount, expense_amount_err = parse_expense_input(expense_amount_raw)
-        if not is_valid_expense:
-            st.session_state["flash_message"] = {"ok": False, "message": expense_amount_err}
-            st.rerun()
-        ok, msg = save_expense_entry(expense_date, expense_amount, expense_category, expense_note, settings)
-        if ok:
-            st.session_state["clear_expense_inputs"] = True
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if update_expense_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Update expense is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        is_valid_expense, expense_amount, expense_amount_err = parse_expense_input(expense_amount_raw)
-        if not is_valid_expense:
-            st.session_state["flash_message"] = {"ok": False, "message": expense_amount_err}
-            st.rerun()
-        ok, msg = update_expense_entry(expense_date, expense_amount, expense_category, expense_note, settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if delete_expense_pressed:
-        if not edit_unlocked:
-            st.session_state["flash_message"] = {
-                "ok": False,
-                "message": "Delete expense is locked. Enter correct PIN to enable editing.",
-            }
-            st.rerun()
-        ok, msg = delete_expense_entry(expense_date, settings)
-        st.session_state["flash_message"] = {"ok": ok, "message": msg}
-        st.rerun()
-
-    if refresh_expense_pressed:
-        st.rerun()
-
+    today = date.today()
+    selected_year = str(today.year)
+    selected_month = month_name[today.month]
     filtered_revenue_df = period_from_filters(
         all_revenue_df,
         selected_year,
         selected_month,
-        use_custom_range and start_date <= end_date,
-        start_date,
-        end_date,
+        False,
+        today,
+        today,
     )
     filtered_expense_df = period_from_filters(
         all_expense_df,
         selected_year,
         selected_month,
-        use_custom_range and start_date <= end_date,
-        start_date,
-        end_date,
+        False,
+        today,
+        today,
     )
 
     kpis = compute_kpis(
@@ -3479,14 +4120,35 @@ def main() -> None:
         selected_year,
         selected_month,
     )
-    render_dashboard(
-        kpis,
-        filtered_revenue_df,
-        all_revenue_df,
-        filtered_expense_df,
-        all_expense_df,
-        settings,
+
+    render_header(kpis, view_unlocked)
+
+    dashboard_tab, revenue_tab, expense_tab, reports_tab, admin_tab = st.tabs(
+        ["Dashboard", "Add Revenue", "Add Expense", "Reports", "Admin"]
     )
+
+    with dashboard_tab:
+        render_dashboard_tab(
+            kpis,
+            filtered_revenue_df,
+            all_revenue_df,
+            filtered_expense_df,
+            all_expense_df,
+            settings,
+            view_unlocked,
+        )
+
+    with revenue_tab:
+        render_revenue_tab(all_revenue_df, settings)
+
+    with expense_tab:
+        render_expense_tab(settings)
+
+    with reports_tab:
+        render_reports_tab(all_revenue_df, all_expense_df)
+
+    with admin_tab:
+        render_admin_tab(settings, all_revenue_df, view_unlocked)
 
 
 if __name__ == "__main__":

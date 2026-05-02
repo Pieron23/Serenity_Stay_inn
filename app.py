@@ -62,10 +62,10 @@ DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 USE_POSTGRES = bool(DATABASE_URL)
 
 DEFAULT_SETTINGS = {
-    "Initial_Balance": 369_308.0,
+    "Initial_Balance": 306_308.0,
     "Balance_Start_Year": 2026.0,
     "Balance_Start_Month": 4.0,
-    "Balance_Start_Day": 11.0,
+    "Balance_Start_Day": 1.0,
     "House_Rent": 590_000.0,
     "Labor": 290_000.0,
     "Water_Bill": 20_000.0,
@@ -124,18 +124,10 @@ def previous_month(today: date | None = None) -> tuple[int, int]:
 def balance_start_date(settings: Dict[str, float]) -> date:
     year = int(safe_float(settings.get("Balance_Start_Year", 2026.0))) or 2026
     month = int(safe_float(settings.get("Balance_Start_Month", 4.0))) or 4
-    day = int(safe_float(settings.get("Balance_Start_Day", 11.0))) or 11
+    day = int(safe_float(settings.get("Balance_Start_Day", 1.0))) or 1
     month = max(1, min(12, month))
     day = max(1, min(monthrange(year, month)[1], day))
     return date(year, month, day)
-
-
-def reset_balance_start_to_april_11(settings: Dict[str, float]) -> bool:
-    return (
-        int(safe_float(settings.get("Balance_Start_Year", 2026.0))) == 2026
-        and int(safe_float(settings.get("Balance_Start_Month", 4.0))) == 4
-        and int(safe_float(settings.get("Balance_Start_Day", 11.0))) < 11
-    )
 
 
 def month_end(year: int, month: int) -> date:
@@ -679,9 +671,6 @@ def read_settings(path: Path = EXCEL_FILE) -> Dict[str, float]:
             key = str(row["Setting"]).strip()
             if key:
                 settings[key] = safe_float(row["Value"])
-
-    if reset_balance_start_to_april_11(settings):
-        settings["Balance_Start_Day"] = 11.0
 
     total_fixed = (
         settings.get("House_Rent", 0.0)
@@ -1394,9 +1383,11 @@ def compute_kpis(
     initial_balance = settings["Initial_Balance"]
     fixed_cost = settings["Total_Fixed_Cost"]
     start_date = balance_start_date(settings)
-    balance_revenue_df = all_df[all_df["Date"] >= start_date] if not all_df.empty else all_df
+    balance_revenue_df = all_df[(all_df["Date"] >= start_date) & (all_df["Date"] <= today)] if not all_df.empty else all_df
     balance_expense_df = (
-        all_expense_df[all_expense_df["Date"] >= start_date] if not all_expense_df.empty else all_expense_df
+        all_expense_df[(all_expense_df["Date"] >= start_date) & (all_expense_df["Date"] <= today)]
+        if not all_expense_df.empty
+        else all_expense_df
     )
 
     total_revenue_all = safe_float(balance_revenue_df["Revenue"].sum()) if not balance_revenue_df.empty else 0.0
@@ -3757,7 +3748,7 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
     projection_year = int(safe_float(kpis["projection_year"]))
     period_label = f"{month_name[projection_month]} {projection_year}"
     balance_start = kpis.get("balance_start_date")
-    balance_start_label = balance_start.strftime("%b %d, %Y") if isinstance(balance_start, date) else "Apr 11, 2026"
+    balance_start_label = balance_start.strftime("%b %d, %Y") if isinstance(balance_start, date) else "Apr 01, 2026"
 
     if not view_unlocked:
         status_text = "Protected view active"

@@ -1323,6 +1323,21 @@ def period_from_filters(
     return filtered.sort_values("Date").reset_index(drop=True)
 
 
+def combined_filter_bounds(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFrame) -> tuple[date, date]:
+    min_candidates = []
+    max_candidates = []
+    if not all_revenue_df.empty:
+        min_candidates.append(all_revenue_df["Date"].min())
+        max_candidates.append(all_revenue_df["Date"].max())
+    if not all_expense_df.empty:
+        min_candidates.append(all_expense_df["Date"].min())
+        max_candidates.append(all_expense_df["Date"].max())
+    if not min_candidates or not max_candidates:
+        today = date.today()
+        return today.replace(day=1), today
+    return min(min_candidates), max(max_candidates)
+
+
 def build_monthly_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=["Period", "Revenue", "Year", "Month"])
@@ -1359,12 +1374,8 @@ def compute_kpis(
         safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
     )
 
-    is_filtered_view = selected_year != "All" or selected_month != "All"
-
-    if is_filtered_view:
-        active_balance = initial_balance + total_revenue_filtered - total_expense_filtered
-    else:
-        active_balance = initial_balance + total_revenue_all - total_expense_all
+    active_balance = initial_balance + total_revenue_all - total_expense_all
+    period_net_movement = total_revenue_filtered - total_expense_filtered
 
     month_for_projection = (
         int(list(month_name).index(selected_month)) if selected_month != "All" else today.month
@@ -1431,6 +1442,9 @@ def compute_kpis(
         "today_expense": today_expense,
         "monthly_revenue": monthly_rev,
         "monthly_expense": monthly_expense,
+        "period_revenue": total_revenue_filtered,
+        "period_expense": total_expense_filtered,
+        "period_net_movement": period_net_movement,
         "current_available_balance": active_balance,
         "avg_daily_revenue": avg_daily,
         "avg_daily_expense": avg_daily_expense,
@@ -3816,7 +3830,7 @@ def render_dashboard_tab(
 ) -> None:
     st.markdown('<div class="section-head">Smart Insights</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Simple daily guidance so you can react quickly.</div>',
+        '<div class="section-note">Simple daily guidance so you can react quickly. Current balance is always all-time cash movement; filters affect period views.</div>',
         unsafe_allow_html=True,
     )
     for tone, message in _build_smart_insights(kpis, all_revenue_df, view_unlocked):
@@ -3832,7 +3846,15 @@ def render_dashboard_tab(
             "good",
             "BAL",
         ),
-        ("Fixed Monthly Cost", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
+        ("Filtered Revenue", format_rwf(safe_float(kpis["period_revenue"])), "", "REV"),
+        ("Filtered Expenses", format_rwf(safe_float(kpis["period_expense"])), "warn", "EXP"),
+        (
+            "Filtered Net",
+            format_rwf(safe_float(kpis["period_net_movement"])),
+            "good" if safe_float(kpis["period_net_movement"]) >= 0 else "bad",
+            "NET",
+        ),
+        ("Remaining Fixed Costs", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
         (
             "Estimated Profit/Loss",
             protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
@@ -4093,8 +4115,13 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 '<div class="entry-note">Enter total rooms revenue for one day. Amount format: 25000 or 25,000.</div>',
                 unsafe_allow_html=True,
             )
+            rooms_date = st.date_input("Date", value=date.today(), key="rooms_date")
+            room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
+            if room_exists:
+                st.warning("Rooms revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
+            else:
+                st.info("No Rooms revenue saved for this date. Save is ready.")
             with st.form("revenue_form_rooms", clear_on_submit=False):
-                rooms_date = st.date_input("Date", value=date.today(), key="rooms_date")
                 rooms_revenue_raw = st.text_input(
                     "Rooms amount (RWF)",
                     value="",
@@ -4102,11 +4129,6 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                     key="rooms_revenue_input",
                 )
                 rooms_note = st.text_input("Rooms note (optional)", key="rooms_note")
-                room_exists = revenue_entry_exists(all_revenue_df, rooms_date, "Rooms")
-                if room_exists:
-                    st.warning("Rooms revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
-                else:
-                    st.info("No Rooms revenue saved for this date. Save is ready.")
                 save_rooms_pressed = st.form_submit_button(
                     "Save Rooms Revenue",
                     type="primary",
@@ -4121,8 +4143,13 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 '<div class="entry-note">Enter total bar revenue for one day. Amount format: 25000 or 25,000.</div>',
                 unsafe_allow_html=True,
             )
+            bar_date = st.date_input("Date", value=date.today(), key="bar_date")
+            bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
+            if bar_exists:
+                st.warning("Bar revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
+            else:
+                st.info("No Bar revenue saved for this date. Save is ready.")
             with st.form("revenue_form_bar", clear_on_submit=False):
-                bar_date = st.date_input("Date", value=date.today(), key="bar_date")
                 bar_revenue_raw = st.text_input(
                     "Bar amount (RWF)",
                     value="",
@@ -4130,11 +4157,6 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                     key="bar_revenue_input",
                 )
                 bar_note = st.text_input("Bar note (optional)", key="bar_note")
-                bar_exists = revenue_entry_exists(all_revenue_df, bar_date, "Bar")
-                if bar_exists:
-                    st.warning("Bar revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it.")
-                else:
-                    st.info("No Bar revenue saved for this date. Save is ready.")
                 save_bar_pressed = st.form_submit_button(
                     "Save Bar Revenue",
                     type="primary",
@@ -4149,8 +4171,15 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                 '<div class="entry-note">Enter total wedding revenue for one day. Amount format: 25000 or 25,000.</div>',
                 unsafe_allow_html=True,
             )
+            wedding_date = st.date_input("Date", value=date.today(), key="wedding_date")
+            wedding_exists = revenue_entry_exists(all_revenue_df, wedding_date, "Wedding")
+            if wedding_exists:
+                st.warning(
+                    "Wedding revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it."
+                )
+            else:
+                st.info("No Wedding revenue saved for this date. Save is ready.")
             with st.form("revenue_form_wedding", clear_on_submit=False):
-                wedding_date = st.date_input("Date", value=date.today(), key="wedding_date")
                 wedding_revenue_raw = st.text_input(
                     "Wedding amount (RWF)",
                     value="",
@@ -4158,13 +4187,6 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
                     key="wedding_revenue_input",
                 )
                 wedding_note = st.text_input("Wedding note (optional)", key="wedding_note")
-                wedding_exists = revenue_entry_exists(all_revenue_df, wedding_date, "Wedding")
-                if wedding_exists:
-                    st.warning(
-                        "Wedding revenue already saved for this date. Go to Admin -> Review/Edit Entries to change it."
-                    )
-                else:
-                    st.info("No Wedding revenue saved for this date. Save is ready.")
                 save_wedding_pressed = st.form_submit_button(
                     "Save Wedding Revenue",
                     type="primary",
@@ -4530,6 +4552,40 @@ def main() -> None:
         view_unlocked = render_sensitive_numbers_access()
 
         st.markdown("---")
+        st.markdown("### Dashboard Filter")
+        revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
+        expense_years = all_expense_df["Year"].unique().tolist() if not all_expense_df.empty else []
+        available_years = sorted({*revenue_years, *expense_years})
+        if not available_years:
+            available_years = [date.today().year]
+        year_options = ["All"] + [str(year) for year in available_years]
+        default_year = str(date.today().year)
+        default_year_index = year_options.index(default_year) if default_year in year_options else 0
+        selected_year = st.selectbox(
+            "Year",
+            options=year_options,
+            index=default_year_index,
+            key="dashboard_year_filter",
+        )
+        month_options = ["All"] + [month_name[m] for m in range(1, 13)]
+        selected_month = st.selectbox(
+            "Month",
+            options=month_options,
+            index=date.today().month,
+            key="dashboard_month_filter",
+        )
+        use_custom_range = st.checkbox(
+            "Use custom date range",
+            value=False,
+            key="dashboard_custom_range",
+        )
+        default_start, default_end = combined_filter_bounds(all_revenue_df, all_expense_df)
+        start_date = st.date_input("Start date", value=default_start, key="dashboard_start_date")
+        end_date = st.date_input("End date", value=default_end, key="dashboard_end_date")
+        if start_date > end_date:
+            st.warning("Start date cannot be later than end date.")
+
+        st.markdown("---")
         public_app_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
         if public_app_url:
             st.markdown("### App Link")
@@ -4560,23 +4616,22 @@ def main() -> None:
             st.write("Remaining Total: ****")
 
     today = date.today()
-    selected_year = str(today.year)
-    selected_month = month_name[today.month]
+    use_valid_custom_range = use_custom_range and start_date <= end_date
     filtered_revenue_df = period_from_filters(
         all_revenue_df,
         selected_year,
         selected_month,
-        False,
-        today,
-        today,
+        use_valid_custom_range,
+        start_date,
+        end_date,
     )
     filtered_expense_df = period_from_filters(
         all_expense_df,
         selected_year,
         selected_month,
-        False,
-        today,
-        today,
+        use_valid_custom_range,
+        start_date,
+        end_date,
     )
 
     kpis = compute_kpis(

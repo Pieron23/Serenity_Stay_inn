@@ -735,6 +735,34 @@ def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
     return True, "Admin settings saved."
 
 
+def pay_fixed_cost(
+    setting_key: str,
+    label: str,
+    payment_date: date,
+    settings: Dict[str, float],
+) -> Tuple[bool, str]:
+    amount = safe_float(settings.get(setting_key, 0.0))
+    if amount <= 0:
+        return False, f"{label} has no remaining amount to pay."
+
+    ok, msg = save_expense_entry(
+        payment_date,
+        amount,
+        f"Fixed Cost - {label}",
+        f"{label} paid and removed from remaining fixed costs.",
+        settings,
+    )
+    if not ok:
+        return False, msg
+
+    updated_settings = settings.copy()
+    updated_settings[setting_key] = 0.0
+    ok, msg = save_settings(updated_settings)
+    if not ok:
+        return False, msg
+    return True, f"{label} payment recorded and removed from remaining fixed costs."
+
+
 def save_entry(
     entry_date: date,
     revenue: float,
@@ -2815,11 +2843,11 @@ def render_admin_access() -> bool:
 def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None:
     st.markdown("### Admin Settings")
     if not is_unlocked:
-        st.info("Unlock admin editing to adjust fixed monthly costs and protected balance settings.")
+        st.info("Unlock admin editing to adjust remaining fixed costs and protected balance settings.")
         return
 
     with st.form("admin_settings_form", clear_on_submit=False):
-        st.caption("Set a cost to 0 to remove it. Changes update dashboard calculations only after Save settings.")
+        st.caption("These are remaining fixed-cost obligations. They do not reduce current balance until you record payment below.")
         top_cols = st.columns(3)
         lower_cols = st.columns(2)
         initial_balance = top_cols[0].number_input(
@@ -2867,7 +2895,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.markdown(
             f"""
             <div class="admin-total">
-                <span>Total fixed monthly cost</span>
+                <span>Remaining fixed costs</span>
                 <strong>{format_rwf(total_fixed)}</strong>
             </div>
             """,
@@ -2892,9 +2920,10 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
-    st.markdown("#### Remove Fixed Cost")
-    st.caption("Remove sets the selected cost to 0 and recalculates the fixed monthly total.")
-    remove_cols = st.columns(4)
+    st.markdown("#### Pay Fixed Cost")
+    st.caption("When a fixed cost is paid, the app records it as an expense and removes it from remaining fixed costs.")
+    fixed_payment_date = st.date_input("Payment date", value=date.today(), key="fixed_cost_payment_date")
+    pay_cols = st.columns(4)
     removable_settings = [
         ("House rent", "House_Rent"),
         ("Labor", "Labor"),
@@ -2903,20 +2932,35 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
     ]
     for idx, (label, key) in enumerate(removable_settings):
         disabled = safe_float(settings.get(key, 0.0)) == 0.0
-        if remove_cols[idx].button(
-            f"Remove {label}",
+        if pay_cols[idx].button(
+            f"Pay {label}",
             width="stretch",
             disabled=disabled,
-            key=f"remove_setting_{key}",
+            key=f"pay_setting_{key}",
         ):
-            updated_settings = settings.copy()
-            updated_settings[key] = 0.0
-            ok, msg = save_settings(updated_settings)
-            st.session_state["flash_message"] = {
-                "ok": ok,
-                "message": f"{label} removed from fixed costs." if ok else msg,
-            }
+            ok, msg = pay_fixed_cost(key, label, fixed_payment_date, settings)
+            st.session_state["flash_message"] = {"ok": ok, "message": msg}
             st.rerun()
+
+    with st.expander("Remove without payment"):
+        st.caption("Use this only when a fixed cost was cancelled, waived, or entered by mistake.")
+        remove_cols = st.columns(4)
+        for idx, (label, key) in enumerate(removable_settings):
+            disabled = safe_float(settings.get(key, 0.0)) == 0.0
+            if remove_cols[idx].button(
+                f"Remove {label}",
+                width="stretch",
+                disabled=disabled,
+                key=f"remove_setting_{key}",
+            ):
+                updated_settings = settings.copy()
+                updated_settings[key] = 0.0
+                ok, msg = save_settings(updated_settings)
+                st.session_state["flash_message"] = {
+                    "ok": ok,
+                    "message": f"{label} removed without payment." if ok else msg,
+                }
+                st.rerun()
 
 
 def render_admin_day_review(
@@ -3008,7 +3052,7 @@ def render_admin_day_review(
 
     if review_mode == "Expense entries":
         if day_expense_df.empty:
-            st.info("No non-fixed expense entries found for this date.")
+            st.info("No expense entries found for this date.")
         else:
             for position, row in day_expense_df.reset_index(drop=True).iterrows():
                 record_id = int(row["Record_ID"])
@@ -3137,7 +3181,7 @@ def render_dashboard(
         ("Revenue Today", format_rwf(safe_float(kpis["today_revenue"])), ""),
         ("Expense Today", format_rwf(safe_float(kpis["today_expense"])), "warn"),
         ("Revenue This Month", format_rwf(safe_float(kpis["monthly_revenue"])), ""),
-        ("Non-Fixed Expense This Month", format_rwf(safe_float(kpis["monthly_expense"])), "warn"),
+        ("Expenses This Month", format_rwf(safe_float(kpis["monthly_expense"])), "warn"),
         ("Current Available Balance", protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked), "good"),
         ("Avg Daily Revenue (Month)", format_rwf(safe_float(kpis["avg_daily_revenue"])), ""),
         ("Avg Daily Expense (Month)", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn"),
@@ -3145,14 +3189,14 @@ def render_dashboard(
         ("Estimated Month-End Expense", protected_currency(safe_float(kpis["est_month_end_expense"]), view_unlocked), "warn"),
         ("Projected Net Revenue (After Expense)", protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked), ""),
         ("Estimated Month-End Balance", protected_currency(safe_float(kpis["est_month_end_balance"]), view_unlocked), "good"),
-        ("Total Fixed Monthly Cost", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
+        ("Remaining Fixed Costs", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
         (
             "Estimated Monthly Profit/Loss",
             protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
             "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
         ),
         (
-            "Balance Minus Fixed Cost",
+            "Balance After Remaining Fixed Costs",
             protected_currency(safe_float(kpis["balance_minus_cost"]), view_unlocked),
             "good" if safe_float(kpis["balance_minus_cost"]) >= 0 else "bad",
         ),
@@ -3213,24 +3257,24 @@ def render_dashboard(
         with perf_cols[3]:
             render_perf_card("This Month", "****")
 
-    st.markdown("### Progress Toward Fixed Monthly Cost")
+    st.markdown("### Progress Toward Remaining Fixed Costs")
     revenue_progress = safe_float(kpis["revenue_progress"])
     balance_progress = safe_float(kpis["balance_progress"])
     net_progress = safe_float(kpis["net_progress"])
 
     if view_unlocked:
         render_progress_row(
-            f"Revenue Progress: {revenue_progress * 100:.1f}% of fixed cost",
+            f"Revenue Progress: {revenue_progress * 100:.1f}% of remaining fixed costs",
             revenue_progress,
             "progress-fill-revenue",
         )
         render_progress_row(
-            f"Available Balance Coverage: {balance_progress * 100:.1f}% of fixed cost",
+            f"Available Balance Coverage: {balance_progress * 100:.1f}% of remaining fixed costs",
             balance_progress,
             "progress-fill-balance",
         )
         render_progress_row(
-            f"Projected Net Coverage (after non-fixed expenses): {net_progress * 100:.1f}%",
+            f"Projected Net Coverage (after expenses): {net_progress * 100:.1f}%",
             net_progress,
             "progress-fill-net",
         )
@@ -3242,15 +3286,15 @@ def render_dashboard(
     status_col_1, status_col_2 = st.columns(2)
     status_1_class = "status-good" if (view_unlocked and kpis["is_revenue_break_even"]) else "status-warn"
     status_1_text = (
-        "Projected month-end net revenue (after non-fixed expenses) can cover fixed monthly costs."
+        "Projected month-end net revenue (after expenses) can cover remaining fixed costs."
         if (view_unlocked and kpis["is_revenue_break_even"])
-        else ("Projected month-end net revenue (after non-fixed expenses) is below fixed monthly costs." if view_unlocked else "Protected. Enter PIN to view this status.")
+        else ("Projected month-end net revenue (after expenses) is below remaining fixed costs." if view_unlocked else "Protected. Enter PIN to view this status.")
     )
     status_2_class = "status-good" if (view_unlocked and kpis["is_balance_break_even"]) else "status-bad"
     status_2_text = (
-        "Current available balance is enough for fixed monthly costs."
+        "Current available balance is enough for remaining fixed costs."
         if (view_unlocked and kpis["is_balance_break_even"])
-        else ("Current available balance is not enough for fixed monthly costs." if view_unlocked else "Protected. Enter PIN to view this status.")
+        else ("Current available balance is not enough for remaining fixed costs." if view_unlocked else "Protected. Enter PIN to view this status.")
     )
 
     status_col_1.markdown(
@@ -3289,7 +3333,7 @@ def render_dashboard(
                 <div class="zone-card {current_zone_class}">
                     <div class="zone-title">Current Zone: {current_zone_text}</div>
                     <div>
-                        Based on current available balance versus fixed monthly cost.
+                        Based on current available balance versus remaining fixed costs.
                         {"Coverage achieved." if current_gap >= 0 else f"Need {format_rwf(abs(current_gap))} more for coverage."}
                     </div>
                 </div>
@@ -3303,15 +3347,15 @@ def render_dashboard(
                 <div class="zone-card {projected_zone_class}">
                     <div class="zone-title">Projected Month-End Zone: {projected_zone_text}</div>
                     <div>
-                        Based on estimated month-end net revenue after non-fixed expenses.
-                        {"Projected to cover fixed monthly cost." if projected_gap >= 0 else f"Need projected {format_rwf(abs(projected_gap))} more net amount to hit coverage."}
+                        Based on estimated month-end net revenue after expenses.
+                        {"Projected to cover remaining fixed costs." if projected_gap >= 0 else f"Need projected {format_rwf(abs(projected_gap))} more net amount to hit coverage."}
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        st.caption("Zone status updates automatically after each revenue or non-fixed expense entry/update/delete.")
+        st.caption("Zone status updates automatically after each revenue or expense entry/update/delete.")
 
     chart_left, chart_right = st.columns(2)
 
@@ -3423,9 +3467,9 @@ def render_dashboard(
     chart_left, chart_right = st.columns(2)
 
     with chart_left:
-        st.markdown("### Non-Fixed Expense Trend")
+        st.markdown("### Expense Trend")
         if filtered_expense_df.empty:
-            st.info("No non-fixed expense records in the selected filter.")
+            st.info("No expense records in the selected filter.")
         else:
             expense_trend_df = filtered_expense_df.copy()
             expense_trend_df["Date"] = pd.to_datetime(expense_trend_df["Date"]).dt.normalize()
@@ -3435,7 +3479,7 @@ def render_dashboard(
                 y="Expense",
                 color="Category",
                 template="plotly_white",
-                title="Daily Unexpected/Non-Fixed Expenses",
+                title="Daily Expenses",
                 color_discrete_sequence=["#ea580c", "#f59e0b", "#fb923c", "#fdba74"],
             )
             style_plotly_chart(
@@ -3452,7 +3496,7 @@ def render_dashboard(
     else:
         break_even_df = pd.DataFrame(
             {
-                "Metric": ["Projected Net Revenue", "Available Balance", "Fixed Cost Target"],
+                "Metric": ["Projected Net Revenue", "Available Balance", "Remaining Fixed Costs"],
                 "Amount": [
                     safe_float(kpis["projected_net_revenue"]),
                     safe_float(kpis["current_available_balance"]),
@@ -3471,7 +3515,7 @@ def render_dashboard(
             color_discrete_map={
                 "Projected Net Revenue": "#f59e0b",
                 "Available Balance": "#2563eb",
-                "Fixed Cost Target": "#ea580c",
+                "Remaining Fixed Costs": "#ea580c",
             },
         )
         fig_break_even.update_layout(
@@ -3525,7 +3569,7 @@ def render_dashboard(
                 x="Date",
                 y="Cumulative_Net",
                 template="plotly_white",
-                title="Cumulative Net Progress (Revenue - Non-Fixed Expense) vs Fixed Cost",
+                title="Cumulative Net Progress (Revenue - Expenses) vs Remaining Fixed Costs",
             )
             fig_progress.update_traces(line_color="#f59e0b", fillcolor="rgba(245,158,11,0.22)")
             fig_progress.add_hline(
@@ -3533,7 +3577,7 @@ def render_dashboard(
                 line_width=2,
                 line_dash="dash",
                 line_color="#1d4ed8",
-                annotation_text="Fixed monthly cost",
+                annotation_text="Remaining fixed costs",
                 annotation_position="top left",
             )
             style_plotly_chart(fig_progress, is_date_x=True, date_values=daily_proj["Date"], y_is_currency=True)
@@ -3551,9 +3595,9 @@ def render_dashboard(
         ].rename(columns={"Revenue_Type": "Revenue Stream"})
         st.dataframe(display_df, width="stretch", hide_index=True)
 
-    st.markdown("### Non-Fixed Expense Records (Filtered)")
+    st.markdown("### Expense Records (Filtered)")
     if filtered_expense_df.empty:
-        st.info("No non-fixed expense records found for selected filters.")
+        st.info("No expense records found for selected filters.")
     else:
         expense_display_df = filtered_expense_df.copy()
         expense_display_df["Date"] = pd.to_datetime(expense_display_df["Date"]).dt.strftime("%Y-%m-%d")
@@ -3577,16 +3621,16 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
     if not view_unlocked:
         status_text = "Protected view active"
         chip_1 = "Current Balance: ****"
-        chip_2 = "Fixed Cost: ****"
+        chip_2 = "Remaining Fixed: ****"
         chip_3 = "Break-even Progress: ****"
     else:
         status_text = (
-            "On track to cover fixed costs"
+            "On track to cover remaining fixed costs"
             if bool(kpis["is_revenue_break_even"])
-            else "Not yet at fixed-cost break-even"
+            else "Not yet at remaining fixed-cost break-even"
         )
         chip_1 = f"Current Balance: {format_rwf(safe_float(kpis['current_available_balance']))}"
-        chip_2 = f"Fixed Cost: {format_rwf(safe_float(kpis['fixed_cost']))}"
+        chip_2 = f"Remaining Fixed: {format_rwf(safe_float(kpis['fixed_cost']))}"
         chip_3 = f"Break-even Progress: {safe_float(kpis['net_progress']) * 100:.1f}%"
 
     st.markdown(
@@ -3628,7 +3672,7 @@ def _build_smart_insights(
 
     if view_unlocked:
         if bool(kpis["is_revenue_break_even"]):
-            insights.append(("good", "You are on track to cover fixed costs this month."))
+            insights.append(("good", "You are on track to cover remaining fixed costs this month."))
         else:
             remaining = safe_float(kpis["remaining_break_even"])
             insights.append(("warn", f"You need {format_rwf(remaining)} more to break even."))
@@ -3867,7 +3911,7 @@ def render_dashboard_tab(
         render_chart_card(
             "Revenue vs Expense",
             _revenue_vs_expense_chart,
-            "Daily revenue compared with non-fixed expenses.",
+            "Daily revenue compared with expenses.",
         )
 
     with chart_col_4:
@@ -3877,7 +3921,7 @@ def render_dashboard_tab(
                 return
             progress_df = pd.DataFrame(
                 {
-                    "Metric": ["Current Balance", "Projected Net Revenue", "Fixed Cost Target"],
+                    "Metric": ["Current Balance", "Projected Net Revenue", "Remaining Fixed Costs"],
                     "Amount": [
                         safe_float(kpis["current_available_balance"]),
                         safe_float(kpis["projected_net_revenue"]),
@@ -3894,7 +3938,7 @@ def render_dashboard_tab(
                 color_discrete_map={
                     "Current Balance": "#0f766e",
                     "Projected Net Revenue": "#1d4ed8",
-                    "Fixed Cost Target": "#ea580c",
+                    "Remaining Fixed Costs": "#ea580c",
                 },
             )
             style_plotly_chart(fig_break_even, y_is_currency=True)
@@ -3903,7 +3947,7 @@ def render_dashboard_tab(
         render_chart_card(
             "Break-even Progress",
             _break_even_progress_chart,
-            "Coverage comparison against fixed monthly cost.",
+            "Coverage comparison against remaining fixed costs.",
         )
 
     def _fixed_cost_donut_chart() -> None:
@@ -4088,7 +4132,7 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
 def render_expense_tab(settings: Dict[str, float]) -> None:
     st.markdown('<div class="section-head">Add Expense</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Record non-fixed expenses such as stock, cleaning, and transport.</div>',
+        '<div class="section-note">Record expenses such as stock, cleaning, transport, and other manual payments.</div>',
         unsafe_allow_html=True,
     )
 
@@ -4308,9 +4352,9 @@ def render_admin_tab(
         st.info(f"Data file location: {EXCEL_FILE}")
 
     if view_unlocked:
-        st.caption(f"Current fixed monthly cost: {format_rwf(safe_float(settings['Total_Fixed_Cost']))}")
+        st.caption(f"Remaining fixed costs: {format_rwf(safe_float(settings['Total_Fixed_Cost']))}")
     else:
-        st.caption("Current fixed monthly cost: ****")
+        st.caption("Remaining fixed costs: ****")
 
     is_admin_unlocked = render_admin_access()
     admin_sections = ["Review/Edit Entries", "Fixed Costs & Balance"]
@@ -4421,19 +4465,19 @@ def main() -> None:
             st.code(str(EXCEL_FILE))
 
         st.markdown("---")
-        st.markdown("**Fixed Monthly Costs**")
+        st.markdown("**Remaining Fixed Costs**")
         if view_unlocked:
             st.write(f"House Rent: {format_rwf(settings['House_Rent'])}")
             st.write(f"Labor: {format_rwf(settings['Labor'])}")
             st.write(f"Water Bill: {format_rwf(settings['Water_Bill'])}")
             st.write(f"Electricity: {format_rwf(settings['Electricity'])}")
-            st.write(f"Total Fixed Cost: {format_rwf(settings['Total_Fixed_Cost'])}")
+            st.write(f"Remaining Total: {format_rwf(settings['Total_Fixed_Cost'])}")
         else:
             st.write("House Rent: ****")
             st.write("Labor: ****")
             st.write("Water Bill: ****")
             st.write("Electricity: ****")
-            st.write("Total Fixed Cost: ****")
+            st.write("Remaining Total: ****")
 
     today = date.today()
     selected_year = str(today.year)

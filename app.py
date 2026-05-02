@@ -3772,18 +3772,28 @@ def _render_kpi_grid(cards: list[tuple[str, str, str, str]], columns_per_row: in
 def _build_smart_insights(
     kpis: Dict[str, float | str | bool | date | None],
     all_revenue_df: pd.DataFrame,
+    all_expense_df: pd.DataFrame,
     view_unlocked: bool,
 ) -> list[tuple[str, str]]:
     insights: list[tuple[str, str]] = []
     today = date.today()
     yesterday = today - timedelta(days=1)
+    month_revenue = safe_float(kpis["monthly_revenue"])
+    month_expense = safe_float(kpis["monthly_expense"])
+    month_net = month_revenue - month_expense
+    current_balance = safe_float(kpis["current_available_balance"])
+    projected_balance = safe_float(kpis["est_month_end_balance"])
 
     if view_unlocked:
+        balance_tone = "good" if current_balance >= 0 else "bad"
+        insights.append((balance_tone, f"Current balance is {format_rwf(current_balance)} after recorded revenue and expenses."))
         if safe_float(kpis["projected_net_revenue"]) >= 0:
             insights.append(("good", "Projected month-end movement is positive after recorded expenses."))
         else:
             projected_gap = abs(safe_float(kpis["projected_net_revenue"]))
             insights.append(("warn", f"Projected month-end movement is negative by {format_rwf(projected_gap)}."))
+        projected_tone = "good" if projected_balance >= current_balance else "warn"
+        insights.append((projected_tone, f"Projected balance is {format_rwf(projected_balance)} if the current pace continues."))
     else:
         insights.append(("info", "Balance status is protected. Enter PIN from sidebar to view protected numbers."))
 
@@ -3805,6 +3815,29 @@ def _build_smart_insights(
         insights.append(("warn", f"Today's revenue is lower than yesterday by {format_rwf(diff)}."))
     else:
         insights.append(("info", "Today's revenue is equal to yesterday."))
+
+    today_expense = (
+        safe_float(all_expense_df.loc[all_expense_df["Date"] == today, "Expense"].sum())
+        if not all_expense_df.empty
+        else 0.0
+    )
+    today_net = today_revenue - today_expense
+    today_tone = "good" if today_net >= 0 else "bad"
+    insights.append((today_tone, f"Today net movement is {format_rwf(today_net)}."))
+
+    if month_revenue > 0:
+        expense_rate = month_expense / month_revenue
+        if expense_rate <= 0.35:
+            insights.append(("good", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue."))
+        elif expense_rate <= 0.65:
+            insights.append(("warn", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue; keep watching spending."))
+        else:
+            insights.append(("bad", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue; spending is heavy this month."))
+    elif month_expense > 0:
+        insights.append(("warn", "This month has expenses recorded but no revenue yet."))
+
+    month_net_tone = "good" if month_net >= 0 else "bad"
+    insights.append((month_net_tone, f"This month's net movement is {format_rwf(month_net)}."))
 
     projection_year = int(safe_float(kpis["projection_year"]))
     projection_month = int(safe_float(kpis["projection_month"]))
@@ -3830,6 +3863,22 @@ def _build_smart_insights(
     else:
         insights.append(("info", "No revenue entries have been recorded yet this month."))
 
+    if not all_expense_df.empty:
+        this_month_expense_df = all_expense_df[
+            (all_expense_df["Year"] == projection_year) & (all_expense_df["Month"] == projection_month)
+        ].copy()
+        if not this_month_expense_df.empty:
+            category_totals = (
+                this_month_expense_df.groupby("Category", as_index=False)["Expense"]
+                .sum()
+                .sort_values("Expense", ascending=False)
+                .reset_index(drop=True)
+            )
+            if not category_totals.empty:
+                top_category = str(category_totals.loc[0, "Category"])
+                top_expense = safe_float(category_totals.loc[0, "Expense"])
+                insights.append(("warn", f"Biggest expense category this month is {top_category} ({format_rwf(top_expense)})."))
+
     return insights
 
 
@@ -3847,11 +3896,22 @@ def render_dashboard_tab(
         '<div class="section-note">Simple daily guidance so you can react quickly. Filters affect the filtered revenue, expense, and net cards.</div>',
         unsafe_allow_html=True,
     )
-    for tone, message in _build_smart_insights(kpis, all_revenue_df, view_unlocked):
+    for tone, message in _build_smart_insights(kpis, all_revenue_df, all_expense_df, view_unlocked):
         st.markdown(f'<div class="insight-card {tone}">{message}</div>', unsafe_allow_html=True)
 
     month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
     balance_net = safe_float(kpis["balance_net_movement"])
+    today_net = safe_float(kpis["today_revenue"]) - safe_float(kpis["today_expense"])
+    expense_rate = (
+        safe_float(kpis["monthly_expense"]) / safe_float(kpis["monthly_revenue"])
+        if safe_float(kpis["monthly_revenue"]) > 0
+        else 0.0
+    )
+    revenue_to_expense = (
+        safe_float(kpis["monthly_revenue"]) / safe_float(kpis["monthly_expense"])
+        if safe_float(kpis["monthly_expense"]) > 0
+        else 0.0
+    )
     key_kpis = [
         (
             "Current Balance",
@@ -3904,8 +3964,11 @@ def render_dashboard_tab(
         worst_day_label = f"{worst_day_text} | {format_rwf(safe_float(worst_day['Revenue']))}"
 
     advanced_kpis = [
+        ("Today Net", format_rwf(today_net), "good" if today_net >= 0 else "bad", "DAY"),
         ("Average Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), "", "ADR"),
         ("Average Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn", "ADE"),
+        ("Expense Rate", f"{expense_rate * 100:.1f}%", "good" if expense_rate <= 0.35 else "warn", "RATE"),
+        ("Revenue / Expense", f"{revenue_to_expense:.2f}x" if revenue_to_expense else "No expense", "", "R/E"),
         ("Filtered Revenue", format_rwf(safe_float(kpis["period_revenue"])), "", "REV"),
         ("Filtered Expenses", format_rwf(safe_float(kpis["period_expense"])), "warn", "EXP"),
         (
@@ -3936,7 +3999,7 @@ def render_dashboard_tab(
         ("Lowest Revenue Day", worst_day_label, "warn", "LOW"),
     ]
 
-    with st.expander("Advanced details", expanded=False):
+    with st.expander("More helpful KPIs", expanded=True):
         _render_kpi_grid(advanced_kpis, columns_per_row=4)
 
     st.markdown('<div class="section-head">Performance Charts</div>', unsafe_allow_html=True)

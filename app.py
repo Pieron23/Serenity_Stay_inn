@@ -1431,10 +1431,10 @@ def compute_kpis(
     est_month_end_balance = active_balance + projected_remaining_revenue - projected_remaining_expense
     projected_net_revenue = est_month_end_revenue - est_month_end_expense
 
-    est_profit_loss = projected_net_revenue - fixed_cost
-    balance_minus_cost = active_balance - fixed_cost
+    est_profit_loss = projected_net_revenue
+    balance_minus_cost = active_balance
 
-    remaining_break_even = max(fixed_cost - max(projected_net_revenue, active_balance), 0.0)
+    remaining_break_even = 0.0
 
     best_day = None
     worst_day = None
@@ -1497,18 +1497,17 @@ def compute_kpis(
 
 
 def build_zone_status(kpis: Dict[str, float | str | bool | date | None]) -> Dict[str, float | bool | str]:
-    fixed_cost = safe_float(kpis["fixed_cost"])
     current_available_balance = safe_float(kpis["current_available_balance"])
     projected_net_revenue = safe_float(kpis["projected_net_revenue"])
 
-    current_zone_green = current_available_balance >= fixed_cost
-    projected_zone_green = projected_net_revenue >= fixed_cost
+    current_zone_green = current_available_balance >= 0
+    projected_zone_green = projected_net_revenue >= 0
 
     return {
         "current_zone_green": current_zone_green,
         "projected_zone_green": projected_zone_green,
-        "current_gap": current_available_balance - fixed_cost,
-        "projected_gap": projected_net_revenue - fixed_cost,
+        "current_gap": current_available_balance,
+        "projected_gap": projected_net_revenue,
     }
 
 
@@ -2897,7 +2896,7 @@ def render_sensitive_numbers_access() -> bool:
 
     st.markdown("### Access")
     st.markdown("**Protected numbers**")
-    st.caption("Shows balance, fixed-cost, profit/loss, and break-even figures.")
+    st.caption("Shows balance, revenue, expense, and manual fixed-cost figures.")
 
     if st.session_state["view_unlocked"]:
         st.markdown('<div class="admin-pill sidebar-pill">Numbers visible</div>', unsafe_allow_html=True)
@@ -2955,7 +2954,7 @@ def render_admin_access() -> bool:
 def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None:
     st.markdown("### Admin Settings")
     if not is_unlocked:
-        st.info("Unlock admin editing to adjust remaining fixed costs and protected balance settings.")
+        st.info("Unlock admin editing to adjust manual fixed-cost templates and protected balance settings.")
         return
 
     with st.form("admin_settings_form", clear_on_submit=False):
@@ -3013,7 +3012,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.markdown(
             f"""
             <div class="admin-total">
-                <span>Remaining fixed costs</span>
+                <span>Monthly fixed-cost template</span>
                 <strong>{format_rwf(total_fixed)}</strong>
             </div>
             """,
@@ -3041,19 +3040,19 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
-    st.markdown("#### Settle Previous Month Fixed Costs")
-    st.caption("Paying a fixed cost records an expense for the previous month only. It does not remove that cost from future months.")
+    st.markdown("#### Manual Previous Month Fixed Payments")
+    st.caption("Nothing is deducted automatically. Use these buttons only when admin decides a previous-month fixed cost was actually paid.")
     settlement_year, settlement_month = previous_month()
     settlement_month_name = month_name[settlement_month]
     st.caption(f"Settlement month: {settlement_month_name} {settlement_year}")
     remaining_for_period = remaining_fixed_cost_for_period(settings, settlement_year, settlement_month)
     st.markdown(
-        f"""
-        <div class="admin-total">
-            <span>Remaining for {settlement_month_name} {settlement_year}</span>
+            f"""
+            <div class="admin-total">
+            <span>Unpaid manual template items for {settlement_month_name} {settlement_year}</span>
             <strong>{format_rwf(remaining_for_period)}</strong>
-        </div>
-        """,
+            </div>
+            """,
         unsafe_allow_html=True,
     )
     pay_cols = st.columns(4)
@@ -3319,20 +3318,20 @@ def render_dashboard(
         ("Estimated Month-End Expense", protected_currency(safe_float(kpis["est_month_end_expense"]), view_unlocked), "warn"),
         ("Projected Net Revenue (After Expense)", protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked), ""),
         ("Estimated Month-End Balance", protected_currency(safe_float(kpis["est_month_end_balance"]), view_unlocked), "good"),
-        ("Remaining Fixed Costs", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
+        ("Manual Fixed-Cost Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
         (
-            "Estimated Monthly Profit/Loss",
+            "Projected Net Movement",
             protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
             "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
         ),
         (
-            "Balance After Remaining Fixed Costs",
+            "Balance Before Manual Fixed Payments",
             protected_currency(safe_float(kpis["balance_minus_cost"]), view_unlocked),
             "good" if safe_float(kpis["balance_minus_cost"]) >= 0 else "bad",
         ),
-        ("Remaining To Break Even", protected_currency(safe_float(kpis["remaining_break_even"]), view_unlocked), "warn"),
+        ("Manual Fixed Deducted", protected_currency(0.0, view_unlocked), "warn"),
         (
-            "Projected Net Coverage",
+            "Projected Net Ratio",
             protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
             "good" if safe_float(kpis["net_progress"]) >= 1 else "warn",
         ),
@@ -3387,44 +3386,44 @@ def render_dashboard(
         with perf_cols[3]:
             render_perf_card("This Month", "****")
 
-    st.markdown("### Progress Toward Remaining Fixed Costs")
+    st.markdown("### Revenue And Balance Progress")
     revenue_progress = safe_float(kpis["revenue_progress"])
     balance_progress = safe_float(kpis["balance_progress"])
     net_progress = safe_float(kpis["net_progress"])
 
     if view_unlocked:
         render_progress_row(
-            f"Revenue Progress: {revenue_progress * 100:.1f}% of remaining fixed costs",
+            f"Revenue vs manual fixed-cost template: {revenue_progress * 100:.1f}%",
             revenue_progress,
             "progress-fill-revenue",
         )
         render_progress_row(
-            f"Available Balance Coverage: {balance_progress * 100:.1f}% of remaining fixed costs",
+            f"Available balance vs manual fixed-cost template: {balance_progress * 100:.1f}%",
             balance_progress,
             "progress-fill-balance",
         )
         render_progress_row(
-            f"Projected Net Coverage (after expenses): {net_progress * 100:.1f}%",
+            f"Projected net ratio after expenses: {net_progress * 100:.1f}%",
             net_progress,
             "progress-fill-net",
         )
     else:
-        render_progress_row("Revenue Progress: ****", 0.0, "progress-fill-revenue")
-        render_progress_row("Available Balance Coverage: ****", 0.0, "progress-fill-balance")
-        render_progress_row("Projected Net Coverage: ****", 0.0, "progress-fill-net")
+        render_progress_row("Revenue vs manual template: ****", 0.0, "progress-fill-revenue")
+        render_progress_row("Available balance vs manual template: ****", 0.0, "progress-fill-balance")
+        render_progress_row("Projected net ratio: ****", 0.0, "progress-fill-net")
 
     status_col_1, status_col_2 = st.columns(2)
-    status_1_class = "status-good" if (view_unlocked and kpis["is_revenue_break_even"]) else "status-warn"
+    status_1_class = "status-good" if (view_unlocked and safe_float(kpis["projected_net_revenue"]) >= 0) else "status-warn"
     status_1_text = (
-        "Projected month-end net revenue (after expenses) can cover remaining fixed costs."
-        if (view_unlocked and kpis["is_revenue_break_even"])
-        else ("Projected month-end net revenue (after expenses) is below remaining fixed costs." if view_unlocked else "Protected. Enter PIN to view this status.")
+        "Projected month-end movement is positive after recorded expenses."
+        if (view_unlocked and safe_float(kpis["projected_net_revenue"]) >= 0)
+        else ("Projected month-end movement is negative after recorded expenses." if view_unlocked else "Protected. Enter PIN to view this status.")
     )
-    status_2_class = "status-good" if (view_unlocked and kpis["is_balance_break_even"]) else "status-bad"
+    status_2_class = "status-good" if (view_unlocked and safe_float(kpis["current_available_balance"]) >= 0) else "status-bad"
     status_2_text = (
-        "Current available balance is enough for remaining fixed costs."
-        if (view_unlocked and kpis["is_balance_break_even"])
-        else ("Current available balance is not enough for remaining fixed costs." if view_unlocked else "Protected. Enter PIN to view this status.")
+        "Current available balance is positive before any manual fixed-cost payment."
+        if (view_unlocked and safe_float(kpis["current_available_balance"]) >= 0)
+        else ("Current available balance is negative before manual fixed-cost payments." if view_unlocked else "Protected. Enter PIN to view this status.")
     )
 
     status_col_1.markdown(
@@ -3463,8 +3462,8 @@ def render_dashboard(
                 <div class="zone-card {current_zone_class}">
                     <div class="zone-title">Current Zone: {current_zone_text}</div>
                     <div>
-                        Based on current available balance versus remaining fixed costs.
-                        {"Coverage achieved." if current_gap >= 0 else f"Need {format_rwf(abs(current_gap))} more for coverage."}
+                        Based on current available balance before manual fixed-cost payments.
+                        {f"Positive by {format_rwf(current_gap)}." if current_gap >= 0 else f"Negative by {format_rwf(abs(current_gap))}."}
                     </div>
                 </div>
                 """,
@@ -3478,7 +3477,7 @@ def render_dashboard(
                     <div class="zone-title">Projected Month-End Zone: {projected_zone_text}</div>
                     <div>
                         Based on estimated month-end net revenue after expenses.
-                        {"Projected to cover remaining fixed costs." if projected_gap >= 0 else f"Need projected {format_rwf(abs(projected_gap))} more net amount to hit coverage."}
+                        {f"Projected positive by {format_rwf(projected_gap)}." if projected_gap >= 0 else f"Projected negative by {format_rwf(abs(projected_gap))}."}
                     </div>
                 </div>
                 """,
@@ -3620,13 +3619,13 @@ def render_dashboard(
             )
             st.plotly_chart(fig_expense, width="stretch")
 
-    st.markdown("### Break-Even Coverage Snapshot")
+    st.markdown("### Balance Snapshot")
     if not view_unlocked:
-        st.info("Break-even coverage is protected. Use See numbers to view it.")
+        st.info("Balance snapshot is protected. Use See numbers to view it.")
     else:
         break_even_df = pd.DataFrame(
             {
-                "Metric": ["Projected Net Revenue", "Available Balance", "Remaining Fixed Costs"],
+                "Metric": ["Projected Net Revenue", "Available Balance", "Manual Fixed-Cost Template"],
                 "Amount": [
                     safe_float(kpis["projected_net_revenue"]),
                     safe_float(kpis["current_available_balance"]),
@@ -3640,12 +3639,12 @@ def render_dashboard(
             y="Metric",
             orientation="h",
             template="plotly_white",
-            title="Coverage Comparison",
+            title="Balance Comparison",
             color="Metric",
             color_discrete_map={
                 "Projected Net Revenue": "#f59e0b",
                 "Available Balance": "#2563eb",
-                "Remaining Fixed Costs": "#ea580c",
+                "Manual Fixed-Cost Template": "#ea580c",
             },
         )
         fig_break_even.update_layout(
@@ -3692,24 +3691,14 @@ def render_dashboard(
             daily_proj["Date"] = pd.to_datetime(daily_proj["Date"]).dt.normalize()
             daily_proj["Net_Delta"] = daily_proj["Revenue"] - daily_proj["Expense"]
             daily_proj["Cumulative_Net"] = daily_proj["Net_Delta"].cumsum()
-            fixed_cost = safe_float(kpis["fixed_cost"])
-
             fig_progress = px.area(
                 daily_proj,
                 x="Date",
                 y="Cumulative_Net",
                 template="plotly_white",
-                title="Cumulative Net Progress (Revenue - Expenses) vs Remaining Fixed Costs",
+                title="Cumulative Net Progress (Revenue - Expenses)",
             )
             fig_progress.update_traces(line_color="#f59e0b", fillcolor="rgba(245,158,11,0.22)")
-            fig_progress.add_hline(
-                y=fixed_cost,
-                line_width=2,
-                line_dash="dash",
-                line_color="#1d4ed8",
-                annotation_text="Remaining fixed costs",
-                annotation_position="top left",
-            )
             style_plotly_chart(fig_progress, is_date_x=True, date_values=daily_proj["Date"], y_is_currency=True)
             st.plotly_chart(fig_progress, width="stretch")
 
@@ -3753,17 +3742,17 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
     if not view_unlocked:
         status_text = "Protected view active"
         chip_1 = f"Current Balance since {balance_start_label}: ****"
-        chip_2 = "Remaining Fixed: ****"
-        chip_3 = "Break-even Progress: ****"
+        chip_2 = "Manual Fixed Template: ****"
+        chip_3 = "Net Movement: ****"
     else:
         status_text = (
-            "On track to cover remaining fixed costs"
-            if bool(kpis["is_revenue_break_even"])
-            else "Not yet at remaining fixed-cost break-even"
+            "Current balance is positive"
+            if safe_float(kpis["current_available_balance"]) >= 0
+            else "Current balance is negative"
         )
         chip_1 = f"Current Balance since {balance_start_label}: {format_rwf(safe_float(kpis['current_available_balance']))}"
-        chip_2 = f"Remaining Fixed: {format_rwf(safe_float(kpis['fixed_cost']))}"
-        chip_3 = f"Break-even Progress: {safe_float(kpis['net_progress']) * 100:.1f}%"
+        chip_2 = f"Manual Fixed Template: {format_rwf(safe_float(kpis['fixed_cost']))}"
+        chip_3 = f"Net Movement: {format_rwf(safe_float(kpis['balance_net_movement']))}"
 
     st.markdown(
         f"""
@@ -3803,13 +3792,13 @@ def _build_smart_insights(
     yesterday = today - timedelta(days=1)
 
     if view_unlocked:
-        if bool(kpis["is_revenue_break_even"]):
-            insights.append(("good", "You are on track to cover remaining fixed costs this month."))
+        if safe_float(kpis["projected_net_revenue"]) >= 0:
+            insights.append(("good", "Projected month-end movement is positive after recorded expenses."))
         else:
-            remaining = safe_float(kpis["remaining_break_even"])
-            insights.append(("warn", f"You need {format_rwf(remaining)} more to break even."))
+            projected_gap = abs(safe_float(kpis["projected_net_revenue"]))
+            insights.append(("warn", f"Projected month-end movement is negative by {format_rwf(projected_gap)}."))
     else:
-        insights.append(("info", "Break-even status is protected. Enter PIN from sidebar to view protected numbers."))
+        insights.append(("info", "Balance status is protected. Enter PIN from sidebar to view protected numbers."))
 
     today_revenue = (
         safe_float(all_revenue_df.loc[all_revenue_df["Date"] == today, "Revenue"].sum())
@@ -3894,18 +3883,18 @@ def render_dashboard_tab(
             "good" if safe_float(kpis["period_net_movement"]) >= 0 else "bad",
             "NET",
         ),
-        ("Remaining Fixed Costs", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
+        ("Manual Fixed Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
         (
-            "Estimated Profit/Loss",
+            "Projected Net Movement",
             protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
             "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
-            "P/L",
+            "NET",
         ),
         (
-            "Break-even Progress",
+            "Net Ratio To Template",
             protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
             "good" if (view_unlocked and safe_float(kpis["net_progress"]) >= 1) else "warn",
-            "BE%",
+            "RTO",
         ),
     ]
 
@@ -3947,10 +3936,10 @@ def render_dashboard_tab(
             "NET",
         ),
         (
-            "Remaining To Break-even",
-            protected_currency(safe_float(kpis["remaining_break_even"]), view_unlocked),
+            "Manual Fixed Deducted",
+            protected_currency(0.0, view_unlocked),
             "warn",
-            "REM",
+            "MAN",
         ),
         ("Best Revenue Day", best_day_label, "good", "TOP"),
         ("Lowest Revenue Day", worst_day_label, "warn", "LOW"),
@@ -3961,7 +3950,7 @@ def render_dashboard_tab(
 
     st.markdown('<div class="section-head">Performance Charts</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Clean trend visuals for revenue, expenses, and break-even coverage.</div>',
+        '<div class="section-note">Clean trend visuals for revenue, expenses, and current balance movement.</div>',
         unsafe_allow_html=True,
     )
 
@@ -4057,13 +4046,13 @@ def render_dashboard_tab(
         )
 
     with chart_col_4:
-        def _break_even_progress_chart() -> None:
+        def _balance_comparison_chart() -> None:
             if not view_unlocked:
-                st.info("Break-even progress is protected. Unlock protected numbers from the sidebar.")
+                st.info("Balance comparison is protected. Unlock protected numbers from the sidebar.")
                 return
             progress_df = pd.DataFrame(
                 {
-                    "Metric": ["Current Balance", "Projected Net Revenue", "Remaining Fixed Costs"],
+                    "Metric": ["Current Balance", "Projected Net Revenue", "Manual Fixed-Cost Template"],
                     "Amount": [
                         safe_float(kpis["current_available_balance"]),
                         safe_float(kpis["projected_net_revenue"]),
@@ -4080,16 +4069,16 @@ def render_dashboard_tab(
                 color_discrete_map={
                     "Current Balance": "#0f766e",
                     "Projected Net Revenue": "#1d4ed8",
-                    "Remaining Fixed Costs": "#ea580c",
+                    "Manual Fixed-Cost Template": "#ea580c",
                 },
             )
             style_plotly_chart(fig_break_even, y_is_currency=True)
             st.plotly_chart(fig_break_even, width="stretch")
 
         render_chart_card(
-            "Break-even Progress",
-            _break_even_progress_chart,
-            "Coverage comparison against remaining fixed costs.",
+            "Balance Comparison",
+            _balance_comparison_chart,
+            "Balance and projected net movement before manual fixed-cost payments.",
         )
 
     def _fixed_cost_donut_chart() -> None:
@@ -4494,9 +4483,9 @@ def render_admin_tab(
         st.info(f"Data file location: {EXCEL_FILE}")
 
     if view_unlocked:
-        st.caption(f"Remaining fixed costs: {format_rwf(safe_float(settings['Total_Fixed_Cost']))}")
+        st.caption(f"Manual fixed-cost template: {format_rwf(safe_float(settings['Total_Fixed_Cost']))}")
     else:
-        st.caption("Remaining fixed costs: ****")
+        st.caption("Manual fixed-cost template: ****")
 
     is_admin_unlocked = render_admin_access()
     admin_sections = ["Review/Edit Entries", "Fixed Costs & Balance"]
@@ -4641,13 +4630,13 @@ def main() -> None:
             st.code(str(EXCEL_FILE))
 
         st.markdown("---")
-        st.markdown("**Remaining Fixed Costs**")
+        st.markdown("**Manual Fixed-Cost Template**")
         if view_unlocked:
             st.write(f"House Rent: {format_rwf(settings['House_Rent'])}")
             st.write(f"Labor: {format_rwf(settings['Labor'])}")
             st.write(f"Water Bill: {format_rwf(settings['Water_Bill'])}")
             st.write(f"Electricity: {format_rwf(settings['Electricity'])}")
-            st.write(f"Remaining Total: {format_rwf(settings['Total_Fixed_Cost'])}")
+            st.write(f"Template Total: {format_rwf(settings['Total_Fixed_Cost'])}")
         else:
             st.write("House Rent: ****")
             st.write("Labor: ****")

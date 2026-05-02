@@ -3736,12 +3736,10 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
     projection_month = int(safe_float(kpis["projection_month"]))
     projection_year = int(safe_float(kpis["projection_year"]))
     period_label = f"{month_name[projection_month]} {projection_year}"
-    balance_start = kpis.get("balance_start_date")
-    balance_start_label = balance_start.strftime("%b %d, %Y") if isinstance(balance_start, date) else "Apr 01, 2026"
 
     if not view_unlocked:
         status_text = "Protected view active"
-        chip_1 = f"Current Balance since {balance_start_label}: ****"
+        chip_1 = "Current Balance: ****"
         chip_2 = "Manual Fixed Template: ****"
         chip_3 = "Net Movement: ****"
     else:
@@ -3750,7 +3748,7 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
             if safe_float(kpis["current_available_balance"]) >= 0
             else "Current balance is negative"
         )
-        chip_1 = f"Current Balance since {balance_start_label}: {format_rwf(safe_float(kpis['current_available_balance']))}"
+        chip_1 = f"Current Balance: {format_rwf(safe_float(kpis['current_available_balance']))}"
         chip_2 = f"Manual Fixed Template: {format_rwf(safe_float(kpis['fixed_cost']))}"
         chip_3 = f"Net Movement: {format_rwf(safe_float(kpis['balance_net_movement']))}"
 

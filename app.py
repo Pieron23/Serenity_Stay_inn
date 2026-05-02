@@ -78,6 +78,13 @@ DEFAULT_SETTINGS["Total_Fixed_Cost"] = (
 DAILY_COLUMNS = ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
 EXPENSE_COLUMNS = ["Date", "Expense", "Category", "Note", "Month", "Year", "Created_At"]
 REVENUE_TYPES = ("Rooms", "Bar", "Wedding")
+FIXED_COST_KEYS = ["House_Rent", "Labor", "Water_Bill", "Electricity"]
+FIXED_COST_LABELS = {
+    "House_Rent": "House rent",
+    "Labor": "Labor",
+    "Water_Bill": "Water bill",
+    "Electricity": "Electricity",
+}
 EDIT_PIN_HASH = (
     "8c144858bb5ea1a931069f55943c55a4"
     "27e2530405bbe720e97aae0fda85ee8c"
@@ -102,6 +109,39 @@ def safe_float(value: float | int | None) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def previous_month(today: date | None = None) -> tuple[int, int]:
+    anchor = today or date.today()
+    first_day = anchor.replace(day=1)
+    prior_month_day = first_day - timedelta(days=1)
+    return prior_month_day.year, prior_month_day.month
+
+
+def month_end(year: int, month: int) -> date:
+    return date(year, month, monthrange(year, month)[1])
+
+
+def fixed_payment_key(setting_key: str, year: int, month: int) -> str:
+    return f"Fixed_Paid_{setting_key}_{year}_{month:02d}"
+
+
+def fixed_waived_key(setting_key: str, year: int, month: int) -> str:
+    return f"Fixed_Waived_{setting_key}_{year}_{month:02d}"
+
+
+def fixed_item_settled(settings: Dict[str, float], setting_key: str, year: int, month: int) -> bool:
+    paid = safe_float(settings.get(fixed_payment_key(setting_key, year, month), 0.0))
+    waived = safe_float(settings.get(fixed_waived_key(setting_key, year, month), 0.0))
+    return paid > 0 or waived > 0
+
+
+def remaining_fixed_cost_for_period(settings: Dict[str, float], year: int, month: int) -> float:
+    remaining = 0.0
+    for key in FIXED_COST_KEYS:
+        if not fixed_item_settled(settings, key, year, month):
+            remaining += safe_float(settings.get(key, 0.0))
+    return remaining
 
 
 def parse_money_input(raw_value: str) -> Tuple[bool, float, str]:
@@ -718,8 +758,14 @@ def write_all_data(
 
 
 def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
-    cleaned_settings = DEFAULT_SETTINGS.copy()
-    for key in ["Initial_Balance", "House_Rent", "Labor", "Water_Bill", "Electricity"]:
+    current_settings = read_settings()
+    cleaned_settings = {
+        key: value
+        for key, value in current_settings.items()
+        if key.startswith("Fixed_Paid_") or key.startswith("Fixed_Waived_")
+    }
+    cleaned_settings.update(DEFAULT_SETTINGS.copy())
+    for key in ["Initial_Balance", *FIXED_COST_KEYS]:
         value = safe_float(settings.get(key, cleaned_settings[key]))
         if value < 0:
             return False, "Settings cannot contain negative amounts."
@@ -738,29 +784,54 @@ def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
 def pay_fixed_cost(
     setting_key: str,
     label: str,
-    payment_date: date,
+    settlement_year: int,
+    settlement_month: int,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
     amount = safe_float(settings.get(setting_key, 0.0))
     if amount <= 0:
         return False, f"{label} has no remaining amount to pay."
+    if fixed_item_settled(settings, setting_key, settlement_year, settlement_month):
+        return False, f"{label} is already settled for {month_name[settlement_month]} {settlement_year}."
 
+    payment_date = month_end(settlement_year, settlement_month)
     ok, msg = save_expense_entry(
         payment_date,
         amount,
         f"Fixed Cost - {label}",
-        f"{label} paid and removed from remaining fixed costs.",
+        f"{label} paid for {month_name[settlement_month]} {settlement_year}.",
         settings,
     )
     if not ok:
         return False, msg
 
     updated_settings = settings.copy()
-    updated_settings[setting_key] = 0.0
+    updated_settings[fixed_payment_key(setting_key, settlement_year, settlement_month)] = amount
     ok, msg = save_settings(updated_settings)
     if not ok:
         return False, msg
-    return True, f"{label} payment recorded and removed from remaining fixed costs."
+    return True, f"{label} payment recorded for {month_name[settlement_month]} {settlement_year}."
+
+
+def waive_fixed_cost(
+    setting_key: str,
+    label: str,
+    settlement_year: int,
+    settlement_month: int,
+    settings: Dict[str, float],
+) -> Tuple[bool, str]:
+    amount = safe_float(settings.get(setting_key, 0.0))
+    if amount <= 0:
+        return False, f"{label} has no amount to waive."
+    if fixed_item_settled(settings, setting_key, settlement_year, settlement_month):
+        return False, f"{label} is already settled for {month_name[settlement_month]} {settlement_year}."
+
+    updated_settings = settings.copy()
+    updated_settings[fixed_waived_key(setting_key, settlement_year, settlement_month)] = amount
+    ok, msg = save_settings(updated_settings)
+    if not ok:
+        return False, msg
+    return True, f"{label} waived for {month_name[settlement_month]} {settlement_year}."
 
 
 def save_entry(
@@ -2847,7 +2918,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         return
 
     with st.form("admin_settings_form", clear_on_submit=False):
-        st.caption("These are remaining fixed-cost obligations. They do not reduce current balance until you record payment below.")
+        st.caption("These are the monthly fixed-cost template amounts. They repeat each month until changed here.")
         top_cols = st.columns(3)
         lower_cols = st.columns(2)
         initial_balance = top_cols[0].number_input(
@@ -2920,46 +2991,55 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
-    st.markdown("#### Pay Fixed Cost")
-    st.caption("When a fixed cost is paid, the app records it as an expense and removes it from remaining fixed costs.")
-    fixed_payment_date = st.date_input("Payment date", value=date.today(), key="fixed_cost_payment_date")
+    st.markdown("#### Settle Previous Month Fixed Costs")
+    st.caption("Paying a fixed cost records an expense for the previous month only. It does not remove that cost from future months.")
+    settlement_year, settlement_month = previous_month()
+    settlement_month_name = month_name[settlement_month]
+    st.caption(f"Settlement month: {settlement_month_name} {settlement_year}")
+    remaining_for_period = remaining_fixed_cost_for_period(settings, settlement_year, settlement_month)
+    st.markdown(
+        f"""
+        <div class="admin-total">
+            <span>Remaining for {settlement_month_name} {settlement_year}</span>
+            <strong>{format_rwf(remaining_for_period)}</strong>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     pay_cols = st.columns(4)
-    removable_settings = [
-        ("House rent", "House_Rent"),
-        ("Labor", "Labor"),
-        ("Water bill", "Water_Bill"),
-        ("Electricity", "Electricity"),
-    ]
-    for idx, (label, key) in enumerate(removable_settings):
-        disabled = safe_float(settings.get(key, 0.0)) == 0.0
+    fixed_items = [(FIXED_COST_LABELS[key], key) for key in FIXED_COST_KEYS]
+    for idx, (label, key) in enumerate(fixed_items):
+        disabled = safe_float(settings.get(key, 0.0)) == 0.0 or fixed_item_settled(
+            settings, key, settlement_year, settlement_month
+        )
+        button_label = f"Paid {label}" if disabled and fixed_item_settled(
+            settings, key, settlement_year, settlement_month
+        ) else f"Pay {label}"
         if pay_cols[idx].button(
-            f"Pay {label}",
+            button_label,
             width="stretch",
             disabled=disabled,
             key=f"pay_setting_{key}",
         ):
-            ok, msg = pay_fixed_cost(key, label, fixed_payment_date, settings)
+            ok, msg = pay_fixed_cost(key, label, settlement_year, settlement_month, settings)
             st.session_state["flash_message"] = {"ok": ok, "message": msg}
             st.rerun()
 
     with st.expander("Remove without payment"):
-        st.caption("Use this only when a fixed cost was cancelled, waived, or entered by mistake.")
+        st.caption("Use this only when a selected-month fixed cost was cancelled, waived, or entered by mistake.")
         remove_cols = st.columns(4)
-        for idx, (label, key) in enumerate(removable_settings):
-            disabled = safe_float(settings.get(key, 0.0)) == 0.0
+        for idx, (label, key) in enumerate(fixed_items):
+            disabled = safe_float(settings.get(key, 0.0)) == 0.0 or fixed_item_settled(
+                settings, key, settlement_year, settlement_month
+            )
             if remove_cols[idx].button(
-                f"Remove {label}",
+                f"Waive {label}",
                 width="stretch",
                 disabled=disabled,
                 key=f"remove_setting_{key}",
             ):
-                updated_settings = settings.copy()
-                updated_settings[key] = 0.0
-                ok, msg = save_settings(updated_settings)
-                st.session_state["flash_message"] = {
-                    "ok": ok,
-                    "message": f"{label} removed without payment." if ok else msg,
-                }
+                ok, msg = waive_fixed_cost(key, label, settlement_year, settlement_month, settings)
+                st.session_state["flash_message"] = {"ok": ok, "message": msg}
                 st.rerun()
 
 

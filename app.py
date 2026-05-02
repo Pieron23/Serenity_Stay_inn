@@ -63,6 +63,9 @@ USE_POSTGRES = bool(DATABASE_URL)
 
 DEFAULT_SETTINGS = {
     "Initial_Balance": 369_308.0,
+    "Balance_Start_Year": 2026.0,
+    "Balance_Start_Month": 4.0,
+    "Balance_Start_Day": 1.0,
     "House_Rent": 590_000.0,
     "Labor": 290_000.0,
     "Water_Bill": 20_000.0,
@@ -116,6 +119,15 @@ def previous_month(today: date | None = None) -> tuple[int, int]:
     first_day = anchor.replace(day=1)
     prior_month_day = first_day - timedelta(days=1)
     return prior_month_day.year, prior_month_day.month
+
+
+def balance_start_date(settings: Dict[str, float]) -> date:
+    year = int(safe_float(settings.get("Balance_Start_Year", 2026.0))) or 2026
+    month = int(safe_float(settings.get("Balance_Start_Month", 4.0))) or 4
+    day = int(safe_float(settings.get("Balance_Start_Day", 1.0))) or 1
+    month = max(1, min(12, month))
+    day = max(1, min(monthrange(year, month)[1], day))
+    return date(year, month, day)
 
 
 def month_end(year: int, month: int) -> date:
@@ -667,6 +679,10 @@ def read_settings(path: Path = EXCEL_FILE) -> Dict[str, float]:
         + settings.get("Electricity", 0.0)
     )
     settings["Total_Fixed_Cost"] = total_fixed
+    start = balance_start_date(settings)
+    settings["Balance_Start_Year"] = float(start.year)
+    settings["Balance_Start_Month"] = float(start.month)
+    settings["Balance_Start_Day"] = float(start.day)
 
     return settings
 
@@ -765,7 +781,7 @@ def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
         if key.startswith("Fixed_Paid_") or key.startswith("Fixed_Waived_")
     }
     cleaned_settings.update(DEFAULT_SETTINGS.copy())
-    for key in ["Initial_Balance", *FIXED_COST_KEYS]:
+    for key in ["Initial_Balance", "Balance_Start_Year", "Balance_Start_Month", "Balance_Start_Day", *FIXED_COST_KEYS]:
         value = safe_float(settings.get(key, cleaned_settings[key]))
         if value < 0:
             return False, "Settings cannot contain negative amounts."
@@ -1366,10 +1382,15 @@ def compute_kpis(
     today = date.today()
     initial_balance = settings["Initial_Balance"]
     fixed_cost = settings["Total_Fixed_Cost"]
+    start_date = balance_start_date(settings)
+    balance_revenue_df = all_df[all_df["Date"] >= start_date] if not all_df.empty else all_df
+    balance_expense_df = (
+        all_expense_df[all_expense_df["Date"] >= start_date] if not all_expense_df.empty else all_expense_df
+    )
 
-    total_revenue_all = safe_float(all_df["Revenue"].sum()) if not all_df.empty else 0.0
+    total_revenue_all = safe_float(balance_revenue_df["Revenue"].sum()) if not balance_revenue_df.empty else 0.0
     total_revenue_filtered = safe_float(filtered_df["Revenue"].sum()) if not filtered_df.empty else 0.0
-    total_expense_all = safe_float(all_expense_df["Expense"].sum()) if not all_expense_df.empty else 0.0
+    total_expense_all = safe_float(balance_expense_df["Expense"].sum()) if not balance_expense_df.empty else 0.0
     total_expense_filtered = (
         safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
     )
@@ -1438,6 +1459,7 @@ def compute_kpis(
 
     return {
         "initial_balance": initial_balance,
+        "balance_start_date": start_date,
         "today_revenue": today_revenue,
         "today_expense": today_expense,
         "monthly_revenue": monthly_rev,
@@ -2975,6 +2997,12 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_electricity",
         )
+        current_balance_start = balance_start_date(settings)
+        balance_start = st.date_input(
+            "Balance tracking start",
+            value=current_balance_start,
+            key="setting_balance_start",
+        )
 
         total_fixed = house_rent + labor + water_bill + electricity
         st.markdown(
@@ -2996,6 +3024,9 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         ok, msg = save_settings(
             {
                 "Initial_Balance": initial_balance,
+                "Balance_Start_Year": float(balance_start.year),
+                "Balance_Start_Month": float(balance_start.month),
+                "Balance_Start_Day": float(balance_start.day),
                 "House_Rent": house_rent,
                 "Labor": labor,
                 "Water_Bill": water_bill,
@@ -3711,10 +3742,12 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
     projection_month = int(safe_float(kpis["projection_month"]))
     projection_year = int(safe_float(kpis["projection_year"]))
     period_label = f"{month_name[projection_month]} {projection_year}"
+    balance_start = kpis.get("balance_start_date")
+    balance_start_label = balance_start.strftime("%b %d, %Y") if isinstance(balance_start, date) else "Apr 01, 2026"
 
     if not view_unlocked:
         status_text = "Protected view active"
-        chip_1 = "Current Balance: ****"
+        chip_1 = f"Current Balance since {balance_start_label}: ****"
         chip_2 = "Remaining Fixed: ****"
         chip_3 = "Break-even Progress: ****"
     else:
@@ -3723,7 +3756,7 @@ def render_header(kpis: Dict[str, float | str | bool | date | None], view_unlock
             if bool(kpis["is_revenue_break_even"])
             else "Not yet at remaining fixed-cost break-even"
         )
-        chip_1 = f"Current Balance: {format_rwf(safe_float(kpis['current_available_balance']))}"
+        chip_1 = f"Current Balance since {balance_start_label}: {format_rwf(safe_float(kpis['current_available_balance']))}"
         chip_2 = f"Remaining Fixed: {format_rwf(safe_float(kpis['fixed_cost']))}"
         chip_3 = f"Break-even Progress: {safe_float(kpis['net_progress']) * 100:.1f}%"
 
@@ -3830,7 +3863,7 @@ def render_dashboard_tab(
 ) -> None:
     st.markdown('<div class="section-head">Smart Insights</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Simple daily guidance so you can react quickly. Current balance is always all-time cash movement; filters affect period views.</div>',
+        '<div class="section-note">Simple daily guidance so you can react quickly. Current balance follows the balance tracking start date; filters affect period views.</div>',
         unsafe_allow_html=True,
     )
     for tone, message in _build_smart_insights(kpis, all_revenue_df, view_unlocked):

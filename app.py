@@ -3305,38 +3305,27 @@ def render_dashboard(
     if worst_day is not None:
         worst_day_text = f"{worst_day['Date']} ({format_rwf(worst_day['Revenue'])})"
 
+    month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
+    balance_net = safe_float(kpis["balance_net_movement"])
     cards = [
+        ("Current Balance", protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked), "good"),
+        ("Today Revenue", format_rwf(safe_float(kpis["today_revenue"])), ""),
+        ("Today Expense", format_rwf(safe_float(kpis["today_expense"])), "warn"),
+        ("Month Net", format_rwf(month_net), "good" if month_net >= 0 else "bad"),
+        ("Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), ""),
+        ("Month Expenses", format_rwf(safe_float(kpis["monthly_expense"])), "warn"),
+        ("Net Coverage", protected_percent(safe_float(kpis["net_progress"]), view_unlocked), "good" if safe_float(kpis["net_progress"]) >= 1 else "warn"),
+        ("Projected Balance", protected_currency(safe_float(kpis["est_month_end_balance"]), view_unlocked), "good"),
+        ("Balance Revenue", format_rwf(safe_float(kpis["balance_period_revenue"])), ""),
+        ("Balance Expenses", format_rwf(safe_float(kpis["balance_period_expense"])), "warn"),
+        ("Balance Net Movement", format_rwf(balance_net), "good" if balance_net >= 0 else "bad"),
+        ("Avg Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), ""),
+        ("Avg Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn"),
+        ("Projected Net", protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked), "good" if safe_float(kpis["projected_net_revenue"]) >= 0 else "bad"),
         ("Initial Balance", protected_currency(safe_float(kpis["initial_balance"]), view_unlocked), ""),
-        ("Revenue Today", format_rwf(safe_float(kpis["today_revenue"])), ""),
-        ("Expense Today", format_rwf(safe_float(kpis["today_expense"])), "warn"),
-        ("Revenue This Month", format_rwf(safe_float(kpis["monthly_revenue"])), ""),
-        ("Expenses This Month", format_rwf(safe_float(kpis["monthly_expense"])), "warn"),
-        ("Current Available Balance", protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked), "good"),
-        ("Avg Daily Revenue (Month)", format_rwf(safe_float(kpis["avg_daily_revenue"])), ""),
-        ("Avg Daily Expense (Month)", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn"),
-        ("Estimated Month-End Revenue", protected_currency(safe_float(kpis["est_month_end_revenue"]), view_unlocked), ""),
-        ("Estimated Month-End Expense", protected_currency(safe_float(kpis["est_month_end_expense"]), view_unlocked), "warn"),
-        ("Projected Net Revenue (After Expense)", protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked), ""),
-        ("Estimated Month-End Balance", protected_currency(safe_float(kpis["est_month_end_balance"]), view_unlocked), "good"),
-        ("Manual Fixed-Cost Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
-        (
-            "Projected Net Movement",
-            protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
-            "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
-        ),
-        (
-            "Balance Before Manual Fixed Payments",
-            protected_currency(safe_float(kpis["balance_minus_cost"]), view_unlocked),
-            "good" if safe_float(kpis["balance_minus_cost"]) >= 0 else "bad",
-        ),
-        ("Manual Fixed Deducted", protected_currency(0.0, view_unlocked), "warn"),
-        (
-            "Projected Net Ratio",
-            protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
-            "good" if safe_float(kpis["net_progress"]) >= 1 else "warn",
-        ),
+        ("Manual Fixed Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
         ("Best Revenue Day", best_day_text, "good"),
-        ("Worst Revenue Day", worst_day_text, "bad"),
+        ("Lowest Revenue Day", worst_day_text, "bad"),
     ]
 
     columns = st.columns(4)
@@ -3855,44 +3844,46 @@ def render_dashboard_tab(
 ) -> None:
     st.markdown('<div class="section-head">Smart Insights</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Simple daily guidance so you can react quickly. Current balance follows the balance tracking start date; filters affect period views.</div>',
+        '<div class="section-note">Simple daily guidance so you can react quickly. Filters affect the filtered revenue, expense, and net cards.</div>',
         unsafe_allow_html=True,
     )
     for tone, message in _build_smart_insights(kpis, all_revenue_df, view_unlocked):
         st.markdown(f'<div class="insight-card {tone}">{message}</div>', unsafe_allow_html=True)
 
+    month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
+    balance_net = safe_float(kpis["balance_net_movement"])
     key_kpis = [
-        ("Balance Revenue", format_rwf(safe_float(kpis["balance_period_revenue"])), "", "REV"),
-        ("Balance Expenses", format_rwf(safe_float(kpis["balance_period_expense"])), "warn", "EXP"),
-        ("Today's Revenue", format_rwf(safe_float(kpis["today_revenue"])), "", "DAY"),
-        ("This Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), "", "MON"),
-        ("This Month Expenses", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "EXP"),
         (
             "Current Balance",
             protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked),
             "good",
             "BAL",
         ),
-        ("Filtered Revenue", format_rwf(safe_float(kpis["period_revenue"])), "", "REV"),
-        ("Filtered Expenses", format_rwf(safe_float(kpis["period_expense"])), "warn", "EXP"),
+        ("Today Revenue", format_rwf(safe_float(kpis["today_revenue"])), "", "DAY"),
+        ("Today Expense", format_rwf(safe_float(kpis["today_expense"])), "warn", "EXP"),
+        ("Month Net", format_rwf(month_net), "good" if month_net >= 0 else "bad", "NET"),
+        ("Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), "", "MON"),
+        ("Month Expenses", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "EXP"),
+        (
+            "Net Coverage",
+            protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
+            "good" if (view_unlocked and safe_float(kpis["net_progress"]) >= 1) else "warn",
+            "COV",
+        ),
+        (
+            "Projected Balance",
+            protected_currency(safe_float(kpis["est_month_end_balance"]), view_unlocked),
+            "good",
+            "PRJ",
+        ),
+        ("Balance Revenue", format_rwf(safe_float(kpis["balance_period_revenue"])), "", "REV"),
+        ("Balance Expenses", format_rwf(safe_float(kpis["balance_period_expense"])), "warn", "EXP"),
+        ("Balance Net Movement", format_rwf(balance_net), "good" if balance_net >= 0 else "bad", "NET"),
         (
             "Filtered Net",
             format_rwf(safe_float(kpis["period_net_movement"])),
             "good" if safe_float(kpis["period_net_movement"]) >= 0 else "bad",
-            "NET",
-        ),
-        ("Manual Fixed Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "FIX"),
-        (
-            "Projected Net Movement",
-            protected_currency(safe_float(kpis["est_profit_loss"]), view_unlocked),
-            "good" if safe_float(kpis["est_profit_loss"]) >= 0 else "bad",
-            "NET",
-        ),
-        (
-            "Net Ratio To Template",
-            protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
-            "good" if (view_unlocked and safe_float(kpis["net_progress"]) >= 1) else "warn",
-            "RTO",
+            "FLT",
         ),
     ]
 
@@ -3915,6 +3906,8 @@ def render_dashboard_tab(
     advanced_kpis = [
         ("Average Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), "", "ADR"),
         ("Average Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn", "ADE"),
+        ("Filtered Revenue", format_rwf(safe_float(kpis["period_revenue"])), "", "REV"),
+        ("Filtered Expenses", format_rwf(safe_float(kpis["period_expense"])), "warn", "EXP"),
         (
             "Estimated Month-end Revenue",
             protected_currency(safe_float(kpis["est_month_end_revenue"]), view_unlocked),
@@ -3934,10 +3927,10 @@ def render_dashboard_tab(
             "NET",
         ),
         (
-            "Manual Fixed Deducted",
-            protected_currency(0.0, view_unlocked),
+            "Manual Fixed Template",
+            protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked),
             "warn",
-            "MAN",
+            "FIX",
         ),
         ("Best Revenue Day", best_day_label, "good", "TOP"),
         ("Lowest Revenue Day", worst_day_label, "warn", "LOW"),

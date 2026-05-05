@@ -3058,12 +3058,15 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
     pay_cols = st.columns(4)
     fixed_items = [(FIXED_COST_LABELS[key], key) for key in FIXED_COST_KEYS]
     for idx, (label, key) in enumerate(fixed_items):
-        disabled = safe_float(settings.get(key, 0.0)) == 0.0 or fixed_item_settled(
-            settings, key, settlement_year, settlement_month
-        )
-        button_label = f"Paid {label}" if disabled and fixed_item_settled(
-            settings, key, settlement_year, settlement_month
-        ) else f"Pay {label}"
+        amount_is_empty = safe_float(settings.get(key, 0.0)) == 0.0
+        is_settled = fixed_item_settled(settings, key, settlement_year, settlement_month)
+        disabled = amount_is_empty or is_settled
+        if is_settled:
+            button_label = f"{label} paid for {settlement_month_name}"
+        elif amount_is_empty:
+            button_label = f"No {label} for {settlement_month_name}"
+        else:
+            button_label = f"Pay {label} for {settlement_month_name}"
         if pay_cols[idx].button(
             button_label,
             width="stretch",
@@ -3078,11 +3081,11 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         st.caption("Use this only when a selected-month fixed cost was cancelled, waived, or entered by mistake.")
         remove_cols = st.columns(4)
         for idx, (label, key) in enumerate(fixed_items):
-            disabled = safe_float(settings.get(key, 0.0)) == 0.0 or fixed_item_settled(
-                settings, key, settlement_year, settlement_month
-            )
+            amount_is_empty = safe_float(settings.get(key, 0.0)) == 0.0
+            is_settled = fixed_item_settled(settings, key, settlement_year, settlement_month)
+            disabled = amount_is_empty or is_settled
             if remove_cols[idx].button(
-                f"Waive {label}",
+                f"Waive {label} for {settlement_month_name}",
                 width="stretch",
                 disabled=disabled,
                 key=f"remove_setting_{key}",

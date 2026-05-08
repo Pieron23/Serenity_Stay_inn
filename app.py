@@ -68,25 +68,19 @@ DEFAULT_SETTINGS = {
     "Balance_Start_Day": 1.0,
     "House_Rent": 590_000.0,
     "Labor": 290_000.0,
-    "Water_Bill": 20_000.0,
-    "Electricity": 30_000.0,
 }
 DEFAULT_SETTINGS["Total_Fixed_Cost"] = (
     DEFAULT_SETTINGS["House_Rent"]
     + DEFAULT_SETTINGS["Labor"]
-    + DEFAULT_SETTINGS["Water_Bill"]
-    + DEFAULT_SETTINGS["Electricity"]
 )
 
 DAILY_COLUMNS = ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
 EXPENSE_COLUMNS = ["Date", "Expense", "Category", "Note", "Month", "Year", "Created_At"]
 REVENUE_TYPES = ("Rooms", "Bar", "Wedding")
-FIXED_COST_KEYS = ["House_Rent", "Labor", "Water_Bill", "Electricity"]
+FIXED_COST_KEYS = ["House_Rent", "Labor"]
 FIXED_COST_LABELS = {
-    "House_Rent": "House rent",
+    "House_Rent": "Rent",
     "Labor": "Labor",
-    "Water_Bill": "Water bill",
-    "Electricity": "Electricity",
 }
 EDIT_PIN_HASH = (
     "8c144858bb5ea1a931069f55943c55a4"
@@ -142,10 +136,35 @@ def fixed_waived_key(setting_key: str, year: int, month: int) -> str:
     return f"Fixed_Waived_{setting_key}_{year}_{month:02d}"
 
 
+def fixed_month_lock_key(setting_key: str, year: int, month: int) -> str:
+    return f"Fixed_Paid_Month_Lock_{setting_key}_{year}_{month:02d}"
+
+
 def fixed_item_settled(settings: Dict[str, float], setting_key: str, year: int, month: int) -> bool:
     paid = safe_float(settings.get(fixed_payment_key(setting_key, year, month), 0.0))
     waived = safe_float(settings.get(fixed_waived_key(setting_key, year, month), 0.0))
     return paid > 0 or waived > 0
+
+
+def fixed_item_paid_this_month(settings: Dict[str, float], setting_key: str, year: int, month: int) -> bool:
+    paid = safe_float(settings.get(fixed_month_lock_key(setting_key, year, month), 0.0))
+    return paid > 0
+
+
+def fixed_item_has_current_month_expense(
+    label: str,
+    year: int,
+    month: int,
+    expense_df: pd.DataFrame | None = None,
+) -> bool:
+    if expense_df is None:
+        expense_df = read_expense_data()
+    if expense_df.empty:
+        return False
+    category_match = expense_df["Category"].astype(str).str.strip().str.lower() == f"fixed cost - {label}".lower()
+    month_match = expense_df["Year"] == year
+    month_match &= expense_df["Month"] == month
+    return bool((category_match & month_match).any())
 
 
 def remaining_fixed_cost_for_period(settings: Dict[str, float], year: int, month: int) -> float:
@@ -675,8 +694,6 @@ def read_settings(path: Path = EXCEL_FILE) -> Dict[str, float]:
     total_fixed = (
         settings.get("House_Rent", 0.0)
         + settings.get("Labor", 0.0)
-        + settings.get("Water_Bill", 0.0)
-        + settings.get("Electricity", 0.0)
     )
     settings["Total_Fixed_Cost"] = total_fixed
     start = balance_start_date(settings)
@@ -790,8 +807,6 @@ def save_settings(settings: Dict[str, float]) -> Tuple[bool, str]:
     cleaned_settings["Total_Fixed_Cost"] = (
         cleaned_settings["House_Rent"]
         + cleaned_settings["Labor"]
-        + cleaned_settings["Water_Bill"]
-        + cleaned_settings["Electricity"]
     )
     write_all_data(read_daily_data(), cleaned_settings, expense_df=read_expense_data())
     return True, "Admin settings saved."
@@ -804,13 +819,25 @@ def pay_fixed_cost(
     settlement_month: int,
     settings: Dict[str, float],
 ) -> Tuple[bool, str]:
+    today = date.today()
     amount = safe_float(settings.get(setting_key, 0.0))
     if amount <= 0:
         return False, f"{label} has no remaining amount to pay."
+    if fixed_item_paid_this_month(settings, setting_key, today.year, today.month):
+        return (
+            False,
+            f"{label} is already paid for {month_name[today.month]} {today.year}. It unlocks next month.",
+        )
+    if fixed_item_has_current_month_expense(label, today.year, today.month):
+        return (
+            False,
+            f"{label} is already paid for {month_name[today.month]} {today.year}. It unlocks next month.",
+        )
     if fixed_item_settled(settings, setting_key, settlement_year, settlement_month):
         return False, f"{label} is already settled for {month_name[settlement_month]} {settlement_year}."
 
-    payment_date = month_end(settlement_year, settlement_month)
+    # Record payment on the actual pay date so current balance reflects it immediately.
+    payment_date = today
     ok, msg = save_expense_entry(
         payment_date,
         amount,
@@ -823,10 +850,17 @@ def pay_fixed_cost(
 
     updated_settings = settings.copy()
     updated_settings[fixed_payment_key(setting_key, settlement_year, settlement_month)] = amount
+    updated_settings[fixed_month_lock_key(setting_key, today.year, today.month)] = amount
     ok, msg = save_settings(updated_settings)
     if not ok:
         return False, msg
-    return True, f"{label} payment recorded for {month_name[settlement_month]} {settlement_year}."
+    return (
+        True,
+        (
+            f"Confirmed: {label} paid for {month_name[settlement_month]} {settlement_year}. "
+            f"This button stays disabled for {month_name[today.month]} {today.year} and re-enables next month."
+        ),
+    )
 
 
 def waive_fixed_cost(
@@ -2958,11 +2992,11 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
         return
 
     with st.form("admin_settings_form", clear_on_submit=False):
-        st.caption("These are the monthly fixed-cost template amounts. They repeat each month until changed here.")
+        st.caption("Opening balance is the starting point used to calculate current balance.")
+        st.caption("Only Rent and Labor are included in the monthly fixed-cost template.")
         top_cols = st.columns(3)
-        lower_cols = st.columns(2)
         initial_balance = top_cols[0].number_input(
-            "Initial balance",
+            "Opening balance",
             min_value=0.0,
             value=safe_float(settings["Initial_Balance"]),
             step=1000.0,
@@ -2970,7 +3004,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             key="setting_initial_balance",
         )
         house_rent = top_cols[1].number_input(
-            "House rent",
+            "Rent",
             min_value=0.0,
             value=safe_float(settings["House_Rent"]),
             step=1000.0,
@@ -2985,22 +3019,6 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             format="%.0f",
             key="setting_labor",
         )
-        water_bill = lower_cols[0].number_input(
-            "Water bill",
-            min_value=0.0,
-            value=safe_float(settings["Water_Bill"]),
-            step=1000.0,
-            format="%.0f",
-            key="setting_water_bill",
-        )
-        electricity = lower_cols[1].number_input(
-            "Electricity",
-            min_value=0.0,
-            value=safe_float(settings["Electricity"]),
-            step=1000.0,
-            format="%.0f",
-            key="setting_electricity",
-        )
         current_balance_start = balance_start_date(settings)
         balance_start = st.date_input(
             "Balance tracking start",
@@ -3008,7 +3026,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             key="setting_balance_start",
         )
 
-        total_fixed = house_rent + labor + water_bill + electricity
+        total_fixed = house_rent + labor
         st.markdown(
             f"""
             <div class="admin-total">
@@ -3033,15 +3051,14 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
                 "Balance_Start_Day": float(balance_start.day),
                 "House_Rent": house_rent,
                 "Labor": labor,
-                "Water_Bill": water_bill,
-                "Electricity": electricity,
             }
         )
         st.session_state["flash_message"] = {"ok": ok, "message": msg}
         st.rerun()
 
     st.markdown("#### Manual Previous Month Fixed Payments")
-    st.caption("Nothing is deducted automatically. Use these buttons only when admin decides a previous-month fixed cost was actually paid.")
+    st.caption("Nothing is deducted automatically. Paying here records an expense today and reduces current balance immediately.")
+    st.caption("Each item can be paid once per calendar month. It unlocks automatically next month.")
     settlement_year, settlement_month = previous_month()
     settlement_month_name = month_name[settlement_month]
     st.caption(f"Settlement month: {settlement_month_name} {settlement_year}")
@@ -3055,13 +3072,24 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
             """,
         unsafe_allow_html=True,
     )
-    pay_cols = st.columns(4)
+    pay_cols = st.columns(len(FIXED_COST_KEYS))
     fixed_items = [(FIXED_COST_LABELS[key], key) for key in FIXED_COST_KEYS]
+    current_month_expense_df = read_expense_data()
     for idx, (label, key) in enumerate(fixed_items):
+        today = date.today()
+        paid_this_month = fixed_item_paid_this_month(settings, key, today.year, today.month)
+        paid_from_expense_this_month = fixed_item_has_current_month_expense(
+            label,
+            today.year,
+            today.month,
+            expense_df=current_month_expense_df,
+        )
         amount_is_empty = safe_float(settings.get(key, 0.0)) == 0.0
         is_settled = fixed_item_settled(settings, key, settlement_year, settlement_month)
-        disabled = amount_is_empty or is_settled
-        if is_settled:
+        disabled = amount_is_empty or is_settled or paid_this_month or paid_from_expense_this_month
+        if paid_this_month or paid_from_expense_this_month:
+            button_label = f"{label} paid for {month_name[today.month]}"
+        elif is_settled:
             button_label = f"{label} paid for {settlement_month_name}"
         elif amount_is_empty:
             button_label = f"No {label} for {settlement_month_name}"
@@ -3079,7 +3107,7 @@ def render_admin_settings(settings: Dict[str, float], is_unlocked: bool) -> None
 
     with st.expander("Remove without payment"):
         st.caption("Use this only when a selected-month fixed cost was cancelled, waived, or entered by mistake.")
-        remove_cols = st.columns(4)
+        remove_cols = st.columns(len(FIXED_COST_KEYS))
         for idx, (label, key) in enumerate(fixed_items):
             amount_is_empty = safe_float(settings.get(key, 0.0)) == 0.0
             is_settled = fixed_item_settled(settings, key, settlement_year, settlement_month)
@@ -3325,7 +3353,7 @@ def render_dashboard(
         ("Avg Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), ""),
         ("Avg Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn"),
         ("Projected Net", protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked), "good" if safe_float(kpis["projected_net_revenue"]) >= 0 else "bad"),
-        ("Initial Balance", protected_currency(safe_float(kpis["initial_balance"]), view_unlocked), ""),
+        ("Opening Balance", protected_currency(safe_float(kpis["initial_balance"]), view_unlocked), ""),
         ("Manual Fixed Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn"),
         ("Best Revenue Day", best_day_text, "good"),
         ("Lowest Revenue Day", worst_day_text, "bad"),
@@ -3564,12 +3592,10 @@ def render_dashboard(
         st.markdown("### Fixed Cost Breakdown")
         costs_df = pd.DataFrame(
             {
-                "Category": ["House Rent", "Labor", "Water Bill", "Electricity"],
+                "Category": ["Rent", "Labor"],
                 "Amount": [
                     settings["House_Rent"],
                     settings["Labor"],
-                    settings["Water_Bill"],
-                    settings["Electricity"],
                 ],
             }
         )
@@ -3580,7 +3606,7 @@ def render_dashboard(
             hole=0.55,
             template="plotly_white",
             title="Monthly Fixed Cost Composition",
-            color_discrete_sequence=["#1d4ed8", "#3b82f6", "#f59e0b", "#ea580c"],
+            color_discrete_sequence=["#1d4ed8", "#3b82f6"],
         )
         style_plotly_chart(fig_costs)
         st.plotly_chart(fig_costs, width="stretch")
@@ -4144,12 +4170,10 @@ def render_dashboard_tab(
             return
         costs_df = pd.DataFrame(
             {
-                "Category": ["House Rent", "Labor", "Water Bill", "Electricity"],
+                "Category": ["Rent", "Labor"],
                 "Amount": [
                     safe_float(settings["House_Rent"]),
                     safe_float(settings["Labor"]),
-                    safe_float(settings["Water_Bill"]),
-                    safe_float(settings["Electricity"]),
                 ],
             }
         )
@@ -4159,7 +4183,7 @@ def render_dashboard_tab(
             values="Amount",
             hole=0.58,
             template="plotly_white",
-            color_discrete_sequence=["#1d4ed8", "#0ea5e9", "#f59e0b", "#ea580c"],
+            color_discrete_sequence=["#1d4ed8", "#0ea5e9"],
         )
         style_plotly_chart(fig_costs)
         st.plotly_chart(fig_costs, width="stretch")
@@ -4320,11 +4344,11 @@ def render_revenue_tab(all_revenue_df: pd.DataFrame, settings: Dict[str, float])
 def render_expense_tab(settings: Dict[str, float]) -> None:
     st.markdown('<div class="section-head">Add Expense</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Record expenses such as stock, cleaning, transport, and other manual payments.</div>',
+        '<div class="section-note">Record expenses such as bar and kitchen stock, cleaning, transport, and other manual payments.</div>',
         unsafe_allow_html=True,
     )
 
-    expense_categories = ["Bar Stock", "Cleaning", "Maintenance", "Transport", "Other"]
+    expense_categories = ["Bar and Kitchen Stock", "Cleaning", "Maintenance", "Transport", "Other"]
 
     if st.session_state.pop("clear_expense_inputs", False):
         st.session_state["expense_amount_input"] = ""
@@ -4689,16 +4713,12 @@ def main() -> None:
         st.markdown("---")
         st.markdown("**Manual Fixed-Cost Template**")
         if view_unlocked:
-            st.write(f"House Rent: {format_rwf(settings['House_Rent'])}")
+            st.write(f"Rent: {format_rwf(settings['House_Rent'])}")
             st.write(f"Labor: {format_rwf(settings['Labor'])}")
-            st.write(f"Water Bill: {format_rwf(settings['Water_Bill'])}")
-            st.write(f"Electricity: {format_rwf(settings['Electricity'])}")
             st.write(f"Template Total: {format_rwf(settings['Total_Fixed_Cost'])}")
         else:
-            st.write("House Rent: ****")
+            st.write("Rent: ****")
             st.write("Labor: ****")
-            st.write("Water Bill: ****")
-            st.write("Electricity: ****")
             st.write("Remaining Total: ****")
 
     today = date.today()

@@ -167,6 +167,27 @@ def fixed_item_has_current_month_expense(
     return bool((category_match & month_match).any())
 
 
+def fixed_settlement_mask(expense_df: pd.DataFrame) -> pd.Series:
+    if expense_df.empty or "Category" not in expense_df.columns:
+        return pd.Series(False, index=expense_df.index)
+    return (
+        expense_df["Category"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .str.startswith("fixed cost -")
+    )
+
+
+def split_operating_and_fixed_expenses(expense_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if expense_df.empty:
+        return expense_df.copy(), expense_df.copy()
+    mask = fixed_settlement_mask(expense_df)
+    operating_expense_df = expense_df.loc[~mask].copy()
+    fixed_settlement_df = expense_df.loc[mask].copy()
+    return operating_expense_df, fixed_settlement_df
+
+
 def remaining_fixed_cost_for_period(settings: Dict[str, float], year: int, month: int) -> float:
     remaining = 0.0
     for key in FIXED_COST_KEYS:
@@ -1417,22 +1438,38 @@ def compute_kpis(
     initial_balance = settings["Initial_Balance"]
     fixed_cost = settings["Total_Fixed_Cost"]
     start_date = balance_start_date(settings)
+    operating_all_expense_df, fixed_all_expense_df = split_operating_and_fixed_expenses(all_expense_df)
+    operating_filtered_expense_df, fixed_filtered_expense_df = split_operating_and_fixed_expenses(filtered_expense_df)
+
     balance_revenue_df = all_df[(all_df["Date"] >= start_date) & (all_df["Date"] <= today)] if not all_df.empty else all_df
     balance_expense_df = (
         all_expense_df[(all_expense_df["Date"] >= start_date) & (all_expense_df["Date"] <= today)]
         if not all_expense_df.empty
         else all_expense_df
     )
+    balance_operating_expense_df = (
+        operating_all_expense_df[
+            (operating_all_expense_df["Date"] >= start_date) & (operating_all_expense_df["Date"] <= today)
+        ]
+        if not operating_all_expense_df.empty
+        else operating_all_expense_df
+    )
 
     total_revenue_all = safe_float(balance_revenue_df["Revenue"].sum()) if not balance_revenue_df.empty else 0.0
     total_revenue_filtered = safe_float(filtered_df["Revenue"].sum()) if not filtered_df.empty else 0.0
+    total_operating_expense_all = (
+        safe_float(balance_operating_expense_df["Expense"].sum()) if not balance_operating_expense_df.empty else 0.0
+    )
     total_expense_all = safe_float(balance_expense_df["Expense"].sum()) if not balance_expense_df.empty else 0.0
-    total_expense_filtered = (
-        safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
+    total_operating_expense_filtered = (
+        safe_float(operating_filtered_expense_df["Expense"].sum()) if not operating_filtered_expense_df.empty else 0.0
+    )
+    total_fixed_settlement_filtered = (
+        safe_float(fixed_filtered_expense_df["Expense"].sum()) if not fixed_filtered_expense_df.empty else 0.0
     )
 
     active_balance = initial_balance + total_revenue_all - total_expense_all
-    period_net_movement = total_revenue_filtered - total_expense_filtered
+    period_net_movement = total_revenue_filtered - total_operating_expense_filtered
 
     month_for_projection = (
         int(list(month_name).index(selected_month)) if selected_month != "All" else today.month
@@ -1440,22 +1477,31 @@ def compute_kpis(
     year_for_projection = int(selected_year) if selected_year != "All" else today.year
 
     today_revenue = 0.0
-    today_expense = 0.0
+    today_operating_expense = 0.0
+    today_fixed_settlement = 0.0
     if not all_df.empty:
         today_revenue = safe_float(all_df.loc[all_df["Date"] == today, "Revenue"].sum())
-    if not all_expense_df.empty:
-        today_expense = safe_float(all_expense_df.loc[all_expense_df["Date"] == today, "Expense"].sum())
+    if not operating_all_expense_df.empty:
+        today_operating_expense = safe_float(
+            operating_all_expense_df.loc[operating_all_expense_df["Date"] == today, "Expense"].sum()
+        )
+    if not fixed_all_expense_df.empty:
+        today_fixed_settlement = safe_float(
+            fixed_all_expense_df.loc[fixed_all_expense_df["Date"] == today, "Expense"].sum()
+        )
 
     monthly_rev = month_revenue(all_df, year_for_projection, month_for_projection)
-    monthly_expense = month_expense(all_expense_df, year_for_projection, month_for_projection)
+    monthly_operating_expense = month_expense(operating_all_expense_df, year_for_projection, month_for_projection)
+    monthly_fixed_settlement = month_expense(fixed_all_expense_df, year_for_projection, month_for_projection)
     month_df = all_df[(all_df["Year"] == year_for_projection) & (all_df["Month"] == month_for_projection)]
-    month_expense_df = all_expense_df[
-        (all_expense_df["Year"] == year_for_projection) & (all_expense_df["Month"] == month_for_projection)
+    month_operating_expense_df = operating_all_expense_df[
+        (operating_all_expense_df["Year"] == year_for_projection)
+        & (operating_all_expense_df["Month"] == month_for_projection)
     ]
     recorded_days = int(month_df["Date"].nunique()) if not month_df.empty else 0
-    recorded_expense_days = int(month_expense_df["Date"].nunique()) if not month_expense_df.empty else 0
+    recorded_expense_days = int(month_operating_expense_df["Date"].nunique()) if not month_operating_expense_df.empty else 0
     avg_daily = monthly_rev / recorded_days if recorded_days else 0.0
-    avg_daily_expense = monthly_expense / recorded_expense_days if recorded_expense_days else 0.0
+    avg_daily_expense = monthly_operating_expense / recorded_expense_days if recorded_expense_days else 0.0
     days_in_month = monthrange(year_for_projection, month_for_projection)[1]
 
     est_month_end_revenue = avg_daily * days_in_month
@@ -1498,13 +1544,17 @@ def compute_kpis(
         "balance_start_date": start_date,
         "balance_period_revenue": total_revenue_all,
         "balance_period_expense": total_expense_all,
+        "balance_period_operating_expense": total_operating_expense_all,
         "balance_net_movement": total_revenue_all - total_expense_all,
         "today_revenue": today_revenue,
-        "today_expense": today_expense,
+        "today_expense": today_operating_expense,
+        "today_fixed_settlement": today_fixed_settlement,
         "monthly_revenue": monthly_rev,
-        "monthly_expense": monthly_expense,
+        "monthly_expense": monthly_operating_expense,
+        "monthly_fixed_settlement": monthly_fixed_settlement,
         "period_revenue": total_revenue_filtered,
-        "period_expense": total_expense_filtered,
+        "period_expense": total_operating_expense_filtered,
+        "period_fixed_settlement": total_fixed_settlement_filtered,
         "period_net_movement": period_net_movement,
         "current_available_balance": active_balance,
         "avg_daily_revenue": avg_daily,
@@ -3798,6 +3848,17 @@ def _render_kpi_grid(cards: list[tuple[str, str, str, str]], columns_per_row: in
                 render_kpi_card(title, value, tone=tone, icon=icon)
 
 
+def _render_insight_grid(insights: list[tuple[str, str]], columns_per_row: int = 3) -> None:
+    if not insights:
+        return
+    for start in range(0, len(insights), columns_per_row):
+        row_insights = insights[start : start + columns_per_row]
+        cols = st.columns(columns_per_row)
+        for idx, (tone, message) in enumerate(row_insights):
+            with cols[idx]:
+                st.markdown(f'<div class="insight-card {tone}">{message}</div>', unsafe_allow_html=True)
+
+
 def _build_smart_insights(
     kpis: Dict[str, float | str | bool | date | None],
     all_revenue_df: pd.DataFrame,
@@ -3805,71 +3866,68 @@ def _build_smart_insights(
     view_unlocked: bool,
 ) -> list[tuple[str, str]]:
     insights: list[tuple[str, str]] = []
-    today = date.today()
-    yesterday = today - timedelta(days=1)
+    operating_all_expense_df, _ = split_operating_and_fixed_expenses(all_expense_df)
+    projection_year = int(safe_float(kpis["projection_year"]))
+    projection_month = int(safe_float(kpis["projection_month"]))
+    period_label = f"{month_name[projection_month]} {projection_year}"
     month_revenue = safe_float(kpis["monthly_revenue"])
-    month_expense = safe_float(kpis["monthly_expense"])
-    month_net = month_revenue - month_expense
+    month_operating_expense = safe_float(kpis["monthly_expense"])
+    month_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
+    month_net = month_revenue - month_operating_expense
     current_balance = safe_float(kpis["current_available_balance"])
     projected_balance = safe_float(kpis["est_month_end_balance"])
+    filtered_revenue = safe_float(kpis["period_revenue"])
+    filtered_expense = safe_float(kpis["period_expense"])
+    filtered_net = safe_float(kpis["period_net_movement"])
 
     if view_unlocked:
         balance_tone = "good" if current_balance >= 0 else "bad"
-        insights.append((balance_tone, f"Current balance is {format_rwf(current_balance)} after recorded revenue and expenses."))
-        if safe_float(kpis["projected_net_revenue"]) >= 0:
-            insights.append(("good", "Projected month-end movement is positive after recorded expenses."))
-        else:
-            projected_gap = abs(safe_float(kpis["projected_net_revenue"]))
-            insights.append(("warn", f"Projected month-end movement is negative by {format_rwf(projected_gap)}."))
+        insights.append(
+            (
+                balance_tone,
+                (
+                    f"Cash position: current balance is {format_rwf(current_balance)}. "
+                    "This includes all cash outflows, including rent/labor settlements."
+                ),
+            )
+        )
         projected_tone = "good" if projected_balance >= current_balance else "warn"
-        insights.append((projected_tone, f"Projected balance is {format_rwf(projected_balance)} if the current pace continues."))
+        insights.append((projected_tone, f"Projected month-end balance is {format_rwf(projected_balance)} if current pace holds."))
     else:
         insights.append(("info", "Balance status is protected. Enter PIN from sidebar to view protected numbers."))
 
-    today_revenue = (
-        safe_float(all_revenue_df.loc[all_revenue_df["Date"] == today, "Revenue"].sum())
-        if not all_revenue_df.empty
-        else 0.0
-    )
-    yesterday_revenue = (
-        safe_float(all_revenue_df.loc[all_revenue_df["Date"] == yesterday, "Revenue"].sum())
-        if not all_revenue_df.empty
-        else 0.0
-    )
-    if today_revenue > yesterday_revenue:
-        diff = today_revenue - yesterday_revenue
-        insights.append(("good", f"Today's revenue is higher than yesterday by {format_rwf(diff)}."))
-    elif today_revenue < yesterday_revenue:
-        diff = yesterday_revenue - today_revenue
-        insights.append(("warn", f"Today's revenue is lower than yesterday by {format_rwf(diff)}."))
-    else:
-        insights.append(("info", "Today's revenue is equal to yesterday."))
-
-    today_expense = (
-        safe_float(all_expense_df.loc[all_expense_df["Date"] == today, "Expense"].sum())
-        if not all_expense_df.empty
-        else 0.0
-    )
-    today_net = today_revenue - today_expense
-    today_tone = "good" if today_net >= 0 else "bad"
-    insights.append((today_tone, f"Today net movement is {format_rwf(today_net)}."))
-
     if month_revenue > 0:
-        expense_rate = month_expense / month_revenue
-        if expense_rate <= 0.35:
-            insights.append(("good", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue."))
-        elif expense_rate <= 0.65:
-            insights.append(("warn", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue; keep watching spending."))
-        else:
-            insights.append(("bad", f"Expenses are {expense_rate * 100:.1f}% of monthly revenue; spending is heavy this month."))
-    elif month_expense > 0:
-        insights.append(("warn", "This month has expenses recorded but no revenue yet."))
+        expense_rate = month_operating_expense / month_revenue
+        month_tone = "good" if month_net >= 0 else "bad"
+        insights.append(
+            (
+                month_tone,
+                (
+                    f"{period_label} operating result: {format_rwf(month_revenue)} revenue - "
+                    f"{format_rwf(month_operating_expense)} operating expense = {format_rwf(month_net)} net "
+                    f"({expense_rate * 100:.1f}% expense ratio)."
+                ),
+            )
+        )
+    elif month_operating_expense > 0:
+        insights.append(("warn", f"{period_label} has operating expenses recorded but no revenue yet."))
+    else:
+        insights.append(("info", f"No operating revenue/expense activity recorded yet for {period_label}."))
 
-    month_net_tone = "good" if month_net >= 0 else "bad"
-    insights.append((month_net_tone, f"This month's net movement is {format_rwf(month_net)}."))
+    fixed_tone = "warn" if month_fixed_settlement > 0 else "info"
+    if month_fixed_settlement > 0:
+        insights.append(
+            (
+                fixed_tone,
+                (
+                    f"Fixed settlements paid in {period_label}: {format_rwf(month_fixed_settlement)}. "
+                    "These are prior-month rent/labor obligations and are excluded from daily operating expense analysis."
+                ),
+            )
+        )
+    else:
+        insights.append(("info", f"No rent/labor settlement payment has been recorded in {period_label}."))
 
-    projection_year = int(safe_float(kpis["projection_year"]))
-    projection_month = int(safe_float(kpis["projection_month"]))
     this_month_df = all_revenue_df[
         (all_revenue_df["Year"] == projection_year) & (all_revenue_df["Month"] == projection_month)
     ].copy()
@@ -3883,18 +3941,15 @@ def _build_smart_insights(
         if not stream_totals.empty:
             top_stream = str(stream_totals.loc[0, "Revenue_Type"])
             top_value = safe_float(stream_totals.loc[0, "Revenue"])
-            insights.append(("info", f"{top_stream} is the top revenue stream this month ({format_rwf(top_value)})."))
-            if len(stream_totals) > 1:
-                second_stream = str(stream_totals.loc[1, "Revenue_Type"])
-                second_value = safe_float(stream_totals.loc[1, "Revenue"])
-                gap = max(top_value - second_value, 0.0)
-                insights.append(("info", f"{top_stream} is ahead of {second_stream} by {format_rwf(gap)}."))
+            top_share = (top_value / month_revenue * 100.0) if month_revenue else 0.0
+            insights.append(("info", f"Top revenue stream in {period_label}: {top_stream} ({format_rwf(top_value)}, {top_share:.1f}% share)."))
     else:
-        insights.append(("info", "No revenue entries have been recorded yet this month."))
+        insights.append(("info", f"No revenue entries have been recorded yet in {period_label}."))
 
-    if not all_expense_df.empty:
-        this_month_expense_df = all_expense_df[
-            (all_expense_df["Year"] == projection_year) & (all_expense_df["Month"] == projection_month)
+    if not operating_all_expense_df.empty:
+        this_month_expense_df = operating_all_expense_df[
+            (operating_all_expense_df["Year"] == projection_year)
+            & (operating_all_expense_df["Month"] == projection_month)
         ].copy()
         if not this_month_expense_df.empty:
             category_totals = (
@@ -3906,7 +3961,18 @@ def _build_smart_insights(
             if not category_totals.empty:
                 top_category = str(category_totals.loc[0, "Category"])
                 top_expense = safe_float(category_totals.loc[0, "Expense"])
-                insights.append(("warn", f"Biggest expense category this month is {top_category} ({format_rwf(top_expense)})."))
+                insights.append(("warn", f"Largest operating expense category in {period_label}: {top_category} ({format_rwf(top_expense)})."))
+
+    filtered_tone = "good" if filtered_net >= 0 else "bad"
+    insights.append(
+        (
+            filtered_tone,
+            (
+                f"Current filter operating net: {format_rwf(filtered_net)} "
+                f"(Revenue {format_rwf(filtered_revenue)} vs Operating expense {format_rwf(filtered_expense)})."
+            ),
+        )
+    )
 
     return insights
 
@@ -3922,42 +3988,31 @@ def render_dashboard_tab(
 ) -> None:
     st.markdown('<div class="section-head">Smart Insights</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="section-note">Simple daily guidance so you can react quickly. Filters affect the filtered revenue, expense, and net cards.</div>',
+        '<div class="section-note">Professional operating analysis. Rent/labor settlement payments are separated from daily operating expense analytics.</div>',
         unsafe_allow_html=True,
     )
-    for tone, message in _build_smart_insights(kpis, all_revenue_df, all_expense_df, view_unlocked):
-        st.markdown(f'<div class="insight-card {tone}">{message}</div>', unsafe_allow_html=True)
+    _render_insight_grid(_build_smart_insights(kpis, all_revenue_df, all_expense_df, view_unlocked), columns_per_row=3)
 
     month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
     balance_net = safe_float(kpis["balance_net_movement"])
-    today_net = safe_float(kpis["today_revenue"]) - safe_float(kpis["today_expense"])
-    expense_rate = (
-        safe_float(kpis["monthly_expense"]) / safe_float(kpis["monthly_revenue"])
-        if safe_float(kpis["monthly_revenue"]) > 0
-        else 0.0
-    )
-    revenue_to_expense = (
-        safe_float(kpis["monthly_revenue"]) / safe_float(kpis["monthly_expense"])
-        if safe_float(kpis["monthly_expense"]) > 0
-        else 0.0
-    )
+    monthly_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
     key_kpis = [
         (
             "Current Balance",
             protected_currency(safe_float(kpis["current_available_balance"]), view_unlocked),
-            "good",
+            "good" if safe_float(kpis["current_available_balance"]) >= 0 else "bad",
             "BAL",
         ),
-        ("Today Revenue", format_rwf(safe_float(kpis["today_revenue"])), "", "DAY"),
-        ("Today Expense", format_rwf(safe_float(kpis["today_expense"])), "warn", "EXP"),
-        ("Month Net", format_rwf(month_net), "good" if month_net >= 0 else "bad", "NET"),
+        ("Balance Net Movement", format_rwf(balance_net), "good" if balance_net >= 0 else "bad", "BNM"),
         ("Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), "", "MON"),
-        ("Month Expenses", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "EXP"),
+        ("Operating Expense (Month)", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "OPE"),
+        ("Operating Net (Month)", format_rwf(month_net), "good" if month_net >= 0 else "bad", "NET"),
+        ("Fixed Settlements (Month)", format_rwf(monthly_fixed_settlement), "warn" if monthly_fixed_settlement > 0 else "", "FIX"),
         (
-            "Net Coverage",
-            protected_percent(safe_float(kpis["net_progress"]), view_unlocked),
-            "good" if (view_unlocked and safe_float(kpis["net_progress"]) >= 1) else "warn",
-            "COV",
+            "Filtered Net (Operating)",
+            format_rwf(safe_float(kpis["period_net_movement"])),
+            "good" if safe_float(kpis["period_net_movement"]) >= 0 else "bad",
+            "FLT",
         ),
         (
             "Projected Balance",
@@ -3965,71 +4020,11 @@ def render_dashboard_tab(
             "good",
             "PRJ",
         ),
-        ("Balance Revenue", format_rwf(safe_float(kpis["balance_period_revenue"])), "", "REV"),
-        ("Balance Expenses", format_rwf(safe_float(kpis["balance_period_expense"])), "warn", "EXP"),
-        ("Balance Net Movement", format_rwf(balance_net), "good" if balance_net >= 0 else "bad", "NET"),
-        (
-            "Filtered Net",
-            format_rwf(safe_float(kpis["period_net_movement"])),
-            "good" if safe_float(kpis["period_net_movement"]) >= 0 else "bad",
-            "FLT",
-        ),
+        ("Manual Fixed Template", protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked), "warn", "TPL"),
     ]
 
     st.markdown('<div class="section-head">Key KPIs</div>', unsafe_allow_html=True)
     _render_kpi_grid(key_kpis, columns_per_row=4)
-
-    best_day = kpis["best_day"]
-    worst_day = kpis["worst_day"]
-    best_day_label = "No data"
-    worst_day_label = "No data"
-    if best_day is not None:
-        best_day_date = best_day["Date"]
-        best_day_text = best_day_date.strftime("%Y-%m-%d") if hasattr(best_day_date, "strftime") else str(best_day_date)
-        best_day_label = f"{best_day_text} | {format_rwf(safe_float(best_day['Revenue']))}"
-    if worst_day is not None:
-        worst_day_date = worst_day["Date"]
-        worst_day_text = worst_day_date.strftime("%Y-%m-%d") if hasattr(worst_day_date, "strftime") else str(worst_day_date)
-        worst_day_label = f"{worst_day_text} | {format_rwf(safe_float(worst_day['Revenue']))}"
-
-    advanced_kpis = [
-        ("Today Net", format_rwf(today_net), "good" if today_net >= 0 else "bad", "DAY"),
-        ("Average Daily Revenue", format_rwf(safe_float(kpis["avg_daily_revenue"])), "", "ADR"),
-        ("Average Daily Expense", format_rwf(safe_float(kpis["avg_daily_expense"])), "warn", "ADE"),
-        ("Expense Rate", f"{expense_rate * 100:.1f}%", "good" if expense_rate <= 0.35 else "warn", "RATE"),
-        ("Revenue / Expense", f"{revenue_to_expense:.2f}x" if revenue_to_expense else "No expense", "", "R/E"),
-        ("Filtered Revenue", format_rwf(safe_float(kpis["period_revenue"])), "", "REV"),
-        ("Filtered Expenses", format_rwf(safe_float(kpis["period_expense"])), "warn", "EXP"),
-        (
-            "Estimated Month-end Revenue",
-            protected_currency(safe_float(kpis["est_month_end_revenue"]), view_unlocked),
-            "",
-            "EMR",
-        ),
-        (
-            "Estimated Month-end Expense",
-            protected_currency(safe_float(kpis["est_month_end_expense"]), view_unlocked),
-            "warn",
-            "EME",
-        ),
-        (
-            "Projected Net Revenue",
-            protected_currency(safe_float(kpis["projected_net_revenue"]), view_unlocked),
-            "good" if safe_float(kpis["projected_net_revenue"]) >= 0 else "bad",
-            "NET",
-        ),
-        (
-            "Manual Fixed Template",
-            protected_currency(safe_float(kpis["fixed_cost"]), view_unlocked),
-            "warn",
-            "FIX",
-        ),
-        ("Best Revenue Day", best_day_label, "good", "TOP"),
-        ("Lowest Revenue Day", worst_day_label, "warn", "LOW"),
-    ]
-
-    with st.expander("More helpful KPIs", expanded=True):
-        _render_kpi_grid(advanced_kpis, columns_per_row=4)
 
     st.markdown('<div class="section-head">Performance Charts</div>', unsafe_allow_html=True)
     st.markdown(
@@ -4091,10 +4086,11 @@ def render_dashboard_tab(
         def _revenue_vs_expense_chart() -> None:
             rev_daily = pd.DataFrame(columns=["Date", "Revenue"])
             exp_daily = pd.DataFrame(columns=["Date", "Expense"])
+            operating_month_expense_df, _ = split_operating_and_fixed_expenses(month_expense_df)
             if not month_revenue_df.empty:
                 rev_daily = month_revenue_df.groupby("Date", as_index=False)["Revenue"].sum()
-            if not month_expense_df.empty:
-                exp_daily = month_expense_df.groupby("Date", as_index=False)["Expense"].sum()
+            if not operating_month_expense_df.empty:
+                exp_daily = operating_month_expense_df.groupby("Date", as_index=False)["Expense"].sum()
             compare_df = pd.merge(rev_daily, exp_daily, on="Date", how="outer").sort_values("Date")
             if compare_df.empty:
                 st.info("No revenue or expense records for this month yet.")
@@ -4125,7 +4121,7 @@ def render_dashboard_tab(
         render_chart_card(
             "Revenue vs Expense",
             _revenue_vs_expense_chart,
-            "Daily revenue compared with expenses.",
+            "Daily revenue compared with operating expenses (rent/labor settlements excluded).",
         )
 
     with chart_col_4:

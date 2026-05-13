@@ -58,6 +58,7 @@ TUNNEL_URL_REGEX = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 DAILY_SHEET = "daily_revenue"
 EXPENSE_SHEET = "non_fixed_expenses"
 SETTINGS_SHEET = "settings"
+LOAN_SHEET = "loan_ledger"
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 USE_POSTGRES = bool(DATABASE_URL)
 
@@ -76,12 +77,14 @@ DEFAULT_SETTINGS["Total_Fixed_Cost"] = (
 
 DAILY_COLUMNS = ["Date", "Revenue_Type", "Revenue", "Note", "Month", "Year", "Created_At"]
 EXPENSE_COLUMNS = ["Date", "Expense", "Category", "Note", "Month", "Year", "Created_At"]
+LOAN_COLUMNS = ["Date", "Borrower", "Amount", "Transaction_Type", "Note", "Month", "Year", "Created_At"]
 REVENUE_TYPES = ("Rooms", "Bar", "Wedding")
 FIXED_COST_KEYS = ["House_Rent", "Labor"]
 FIXED_COST_LABELS = {
     "House_Rent": "Rent",
     "Labor": "Labor",
 }
+LOAN_TRANSACTION_TYPES = ("Disbursement", "Repayment")
 EDIT_PIN_HASH = (
     "8c144858bb5ea1a931069f55943c55a4"
     "27e2530405bbe720e97aae0fda85ee8c"
@@ -255,6 +258,20 @@ def normalize_revenue_type(revenue_type: str) -> str:
     if candidate in {"wedding", "weddings"}:
         return "Wedding"
     return "Rooms"
+
+
+def normalize_loan_transaction_type(transaction_type: str) -> str:
+    candidate = str(transaction_type).strip().lower()
+    if candidate in {"repayment", "repaid", "payback", "returned", "return"}:
+        return "Repayment"
+    return "Disbursement"
+
+
+def parse_borrower_name(raw_value: str) -> Tuple[bool, str, str]:
+    borrower = str(raw_value).strip()
+    if not borrower:
+        return False, "", "Enter borrower name."
+    return True, borrower, ""
 
 
 def auto_unlock_login() -> None:
@@ -515,6 +532,21 @@ def _initialize_postgres() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS loan_ledger (
+                    id BIGSERIAL PRIMARY KEY,
+                    entry_date DATE NOT NULL,
+                    borrower TEXT NOT NULL DEFAULT '',
+                    amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+                    transaction_type TEXT NOT NULL DEFAULT 'Disbursement',
+                    note TEXT NOT NULL DEFAULT '',
+                    month INTEGER NOT NULL,
+                    year INTEGER NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
             for key, value in DEFAULT_SETTINGS.items():
                 cur.execute(
                     """
@@ -550,6 +582,7 @@ def initialize_excel_file(path: Path = EXCEL_FILE) -> None:
 
     daily_df = pd.DataFrame(columns=DAILY_COLUMNS)
     expense_df = pd.DataFrame(columns=EXPENSE_COLUMNS)
+    loan_df = pd.DataFrame(columns=LOAN_COLUMNS)
     settings_df = pd.DataFrame(
         {
             "Setting": list(DEFAULT_SETTINGS.keys()),
@@ -560,6 +593,7 @@ def initialize_excel_file(path: Path = EXCEL_FILE) -> None:
     with pd.ExcelWriter(path, engine="openpyxl") as writer:
         daily_df.to_excel(writer, sheet_name=DAILY_SHEET, index=False)
         expense_df.to_excel(writer, sheet_name=EXPENSE_SHEET, index=False)
+        loan_df.to_excel(writer, sheet_name=LOAN_SHEET, index=False)
         settings_df.to_excel(writer, sheet_name=SETTINGS_SHEET, index=False)
 
 
@@ -689,6 +723,72 @@ def read_expense_data(path: Path = EXCEL_FILE) -> pd.DataFrame:
     return _normalize_expense_dataframe(df)
 
 
+def _normalize_loan_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=LOAN_COLUMNS)
+
+    for col in LOAN_COLUMNS:
+        if col not in df.columns:
+            if col in {"Borrower", "Transaction_Type", "Note", "Created_At"}:
+                df[col] = ""
+            else:
+                df[col] = 0
+
+    df = df[LOAN_COLUMNS].copy()
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
+    df["Borrower"] = df["Borrower"].fillna("").astype(str).str.strip()
+    df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0.0)
+    df["Transaction_Type"] = (
+        df["Transaction_Type"].fillna("").astype(str).map(normalize_loan_transaction_type)
+    )
+    df["Note"] = df["Note"].fillna("").astype(str)
+    df["Month"] = pd.to_numeric(df["Month"], errors="coerce").fillna(0).astype(int)
+    df["Year"] = pd.to_numeric(df["Year"], errors="coerce").fillna(0).astype(int)
+    df["Created_At"] = df["Created_At"].fillna("").astype(str)
+
+    df = df.dropna(subset=["Date"]).sort_values(["Date", "Created_At"]).reset_index(drop=True)
+
+    if not df.empty:
+        needs_month = df["Month"].eq(0)
+        needs_year = df["Year"].eq(0)
+        df.loc[needs_month, "Month"] = pd.to_datetime(df.loc[needs_month, "Date"]).dt.month
+        df.loc[needs_year, "Year"] = pd.to_datetime(df.loc[needs_year, "Date"]).dt.year
+
+    return df
+
+
+def read_loan_data(path: Path = EXCEL_FILE) -> pd.DataFrame:
+    initialize_excel_file(path)
+    if USE_POSTGRES:
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        entry_date AS "Date",
+                        borrower AS "Borrower",
+                        amount AS "Amount",
+                        transaction_type AS "Transaction_Type",
+                        note AS "Note",
+                        month AS "Month",
+                        year AS "Year",
+                        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') AS "Created_At"
+                    FROM loan_ledger
+                    ORDER BY entry_date, created_at
+                    """
+                )
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else LOAN_COLUMNS
+        df = pd.DataFrame(rows, columns=columns)
+        return _normalize_loan_dataframe(df)
+
+    try:
+        df = pd.read_excel(path, sheet_name=LOAN_SHEET, engine="openpyxl")
+    except ValueError:
+        df = pd.DataFrame(columns=LOAN_COLUMNS)
+    return _normalize_loan_dataframe(df)
+
+
 def read_settings(path: Path = EXCEL_FILE) -> Dict[str, float]:
     initialize_excel_file(path)
     if USE_POSTGRES:
@@ -729,6 +829,7 @@ def write_all_data(
     daily_df: pd.DataFrame,
     settings: Dict[str, float],
     expense_df: pd.DataFrame | None = None,
+    loan_df: pd.DataFrame | None = None,
     path: Path = EXCEL_FILE,
 ) -> None:
     if USE_POSTGRES:
@@ -736,6 +837,9 @@ def write_all_data(
         if expense_df is None:
             expense_df = read_expense_data(path)
         expense_df = _normalize_expense_dataframe(expense_df)
+        if loan_df is None:
+            loan_df = read_loan_data(path)
+        loan_df = _normalize_loan_dataframe(loan_df)
 
         with _pg_connect() as conn:
             with conn.cursor() as cur:
@@ -777,6 +881,26 @@ def write_all_data(
                         ),
                     )
 
+                cur.execute("DELETE FROM loan_ledger")
+                for _, row in loan_df.iterrows():
+                    cur.execute(
+                        """
+                        INSERT INTO loan_ledger
+                        (entry_date, borrower, amount, transaction_type, note, month, year, created_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::timestamptz)
+                        """,
+                        (
+                            row["Date"],
+                            str(row["Borrower"]).strip(),
+                            safe_float(row["Amount"]),
+                            normalize_loan_transaction_type(row["Transaction_Type"]),
+                            str(row["Note"]).strip(),
+                            int(row["Month"]),
+                            int(row["Year"]),
+                            str(row["Created_At"]).strip() or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        ),
+                    )
+
                 for key, value in settings.items():
                     cur.execute(
                         """
@@ -793,6 +917,9 @@ def write_all_data(
     if expense_df is None:
         expense_df = read_expense_data(path)
     expense_df = _normalize_expense_dataframe(expense_df)
+    if loan_df is None:
+        loan_df = read_loan_data(path)
+    loan_df = _normalize_loan_dataframe(loan_df)
 
     export_df = daily_df.copy()
     if not export_df.empty:
@@ -800,6 +927,9 @@ def write_all_data(
     expense_export_df = expense_df.copy()
     if not expense_export_df.empty:
         expense_export_df["Date"] = pd.to_datetime(expense_export_df["Date"]).dt.strftime("%Y-%m-%d")
+    loan_export_df = loan_df.copy()
+    if not loan_export_df.empty:
+        loan_export_df["Date"] = pd.to_datetime(loan_export_df["Date"]).dt.strftime("%Y-%m-%d")
 
     settings_df = pd.DataFrame({"Setting": list(settings.keys()), "Value": list(settings.values())})
 
@@ -807,6 +937,7 @@ def write_all_data(
     with pd.ExcelWriter(temp_path, engine="openpyxl") as writer:
         export_df.to_excel(writer, sheet_name=DAILY_SHEET, index=False)
         expense_export_df.to_excel(writer, sheet_name=EXPENSE_SHEET, index=False)
+        loan_export_df.to_excel(writer, sheet_name=LOAN_SHEET, index=False)
         settings_df.to_excel(writer, sheet_name=SETTINGS_SHEET, index=False)
     temp_path.replace(path)
 
@@ -1342,6 +1473,106 @@ def delete_expense_record(record_id: int, settings: Dict[str, float]) -> Tuple[b
     return True, "Expense entry deleted."
 
 
+def save_loan_entry(
+    entry_date: date,
+    borrower: str,
+    amount: float,
+    transaction_type: str,
+    note: str,
+    settings: Dict[str, float],
+) -> Tuple[bool, str]:
+    normalized_type = normalize_loan_transaction_type(transaction_type)
+    cleaned_borrower = str(borrower).strip()
+    if not cleaned_borrower:
+        return False, "Borrower name is required."
+    if safe_float(amount) <= 0:
+        return False, "Loan amount must be greater than zero."
+
+    if USE_POSTGRES:
+        initialize_excel_file()
+        with _pg_connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO loan_ledger
+                    (entry_date, borrower, amount, transaction_type, note, month, year, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    """,
+                    (
+                        entry_date,
+                        cleaned_borrower,
+                        safe_float(amount),
+                        normalized_type,
+                        note.strip(),
+                        entry_date.month,
+                        entry_date.year,
+                    ),
+                )
+            conn.commit()
+        if normalized_type == "Repayment":
+            return True, f"Loan repayment recorded for {cleaned_borrower}."
+        return True, f"Loan disbursement recorded for {cleaned_borrower}."
+
+    loan_df = read_loan_data()
+    new_row = pd.DataFrame(
+        [
+            {
+                "Date": entry_date,
+                "Borrower": cleaned_borrower,
+                "Amount": safe_float(amount),
+                "Transaction_Type": normalized_type,
+                "Note": note.strip(),
+                "Month": entry_date.month,
+                "Year": entry_date.year,
+                "Created_At": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        ]
+    )
+    if loan_df.empty:
+        loan_df = new_row.copy()
+    else:
+        loan_df = pd.concat([loan_df, new_row], ignore_index=True)
+    loan_df = _normalize_loan_dataframe(loan_df)
+    write_all_data(read_daily_data(), settings, expense_df=read_expense_data(), loan_df=loan_df)
+    if normalized_type == "Repayment":
+        return True, f"Loan repayment recorded for {cleaned_borrower}."
+    return True, f"Loan disbursement recorded for {cleaned_borrower}."
+
+
+def month_loan_amount(df: pd.DataFrame, year: int, month: int, transaction_type: str) -> float:
+    if df.empty:
+        return 0.0
+    normalized_type = normalize_loan_transaction_type(transaction_type)
+    mask = (
+        (df["Year"] == year)
+        & (df["Month"] == month)
+        & (df["Transaction_Type"] == normalized_type)
+    )
+    return safe_float(df.loc[mask, "Amount"].sum())
+
+
+def loan_outstanding_summary(loan_df: pd.DataFrame) -> pd.DataFrame:
+    if loan_df.empty:
+        return pd.DataFrame(columns=["Borrower", "Disbursed", "Repaid", "Outstanding"])
+
+    by_type = (
+        loan_df.groupby(["Borrower", "Transaction_Type"], as_index=False)["Amount"]
+        .sum()
+        .pivot(index="Borrower", columns="Transaction_Type", values="Amount")
+        .fillna(0.0)
+        .reset_index()
+    )
+    if "Disbursement" not in by_type.columns:
+        by_type["Disbursement"] = 0.0
+    if "Repayment" not in by_type.columns:
+        by_type["Repayment"] = 0.0
+
+    by_type["Outstanding"] = by_type["Disbursement"] - by_type["Repayment"]
+    by_type = by_type.rename(columns={"Disbursement": "Disbursed", "Repayment": "Repaid"})
+    by_type = by_type.sort_values(["Outstanding", "Borrower"], ascending=[False, True]).reset_index(drop=True)
+    return by_type[["Borrower", "Disbursed", "Repaid", "Outstanding"]]
+
+
 # -----------------------------
 # Business calculations
 # -----------------------------
@@ -1394,7 +1625,11 @@ def period_from_filters(
     return filtered.sort_values("Date").reset_index(drop=True)
 
 
-def combined_filter_bounds(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFrame) -> tuple[date, date]:
+def combined_filter_bounds(
+    all_revenue_df: pd.DataFrame,
+    all_expense_df: pd.DataFrame,
+    all_loan_df: pd.DataFrame | None = None,
+) -> tuple[date, date]:
     min_candidates = []
     max_candidates = []
     if not all_revenue_df.empty:
@@ -1403,6 +1638,9 @@ def combined_filter_bounds(all_revenue_df: pd.DataFrame, all_expense_df: pd.Data
     if not all_expense_df.empty:
         min_candidates.append(all_expense_df["Date"].min())
         max_candidates.append(all_expense_df["Date"].max())
+    if all_loan_df is not None and not all_loan_df.empty:
+        min_candidates.append(all_loan_df["Date"].min())
+        max_candidates.append(all_loan_df["Date"].max())
     if not min_candidates or not max_candidates:
         today = date.today()
         return today.replace(day=1), today
@@ -1430,6 +1668,8 @@ def compute_kpis(
     filtered_df: pd.DataFrame,
     all_expense_df: pd.DataFrame,
     filtered_expense_df: pd.DataFrame,
+    all_loan_df: pd.DataFrame,
+    filtered_loan_df: pd.DataFrame,
     settings: Dict[str, float],
     selected_year: str,
     selected_month: str,
@@ -1454,6 +1694,11 @@ def compute_kpis(
         if not operating_all_expense_df.empty
         else operating_all_expense_df
     )
+    balance_loan_df = (
+        all_loan_df[(all_loan_df["Date"] >= start_date) & (all_loan_df["Date"] <= today)]
+        if not all_loan_df.empty
+        else all_loan_df
+    )
 
     total_revenue_all = safe_float(balance_revenue_df["Revenue"].sum()) if not balance_revenue_df.empty else 0.0
     total_revenue_filtered = safe_float(filtered_df["Revenue"].sum()) if not filtered_df.empty else 0.0
@@ -1467,8 +1712,37 @@ def compute_kpis(
     total_fixed_settlement_filtered = (
         safe_float(fixed_filtered_expense_df["Expense"].sum()) if not fixed_filtered_expense_df.empty else 0.0
     )
+    total_loan_disbursed_all = (
+        safe_float(
+            balance_loan_df.loc[balance_loan_df["Transaction_Type"] == "Disbursement", "Amount"].sum()
+        )
+        if not balance_loan_df.empty
+        else 0.0
+    )
+    total_loan_repaid_all = (
+        safe_float(
+            balance_loan_df.loc[balance_loan_df["Transaction_Type"] == "Repayment", "Amount"].sum()
+        )
+        if not balance_loan_df.empty
+        else 0.0
+    )
+    total_loan_disbursed_filtered = (
+        safe_float(
+            filtered_loan_df.loc[filtered_loan_df["Transaction_Type"] == "Disbursement", "Amount"].sum()
+        )
+        if not filtered_loan_df.empty
+        else 0.0
+    )
+    total_loan_repaid_filtered = (
+        safe_float(
+            filtered_loan_df.loc[filtered_loan_df["Transaction_Type"] == "Repayment", "Amount"].sum()
+        )
+        if not filtered_loan_df.empty
+        else 0.0
+    )
+    outstanding_loan_total = max(total_loan_disbursed_all - total_loan_repaid_all, 0.0)
 
-    active_balance = initial_balance + total_revenue_all - total_expense_all
+    active_balance = initial_balance + total_revenue_all - total_expense_all - total_loan_disbursed_all + total_loan_repaid_all
     period_net_movement = total_revenue_filtered - total_operating_expense_filtered
 
     month_for_projection = (
@@ -1479,6 +1753,8 @@ def compute_kpis(
     today_revenue = 0.0
     today_operating_expense = 0.0
     today_fixed_settlement = 0.0
+    today_loan_disbursed = 0.0
+    today_loan_repaid = 0.0
     if not all_df.empty:
         today_revenue = safe_float(all_df.loc[all_df["Date"] == today, "Revenue"].sum())
     if not operating_all_expense_df.empty:
@@ -1489,10 +1765,25 @@ def compute_kpis(
         today_fixed_settlement = safe_float(
             fixed_all_expense_df.loc[fixed_all_expense_df["Date"] == today, "Expense"].sum()
         )
+    if not all_loan_df.empty:
+        today_loan_disbursed = safe_float(
+            all_loan_df.loc[
+                (all_loan_df["Date"] == today) & (all_loan_df["Transaction_Type"] == "Disbursement"),
+                "Amount",
+            ].sum()
+        )
+        today_loan_repaid = safe_float(
+            all_loan_df.loc[
+                (all_loan_df["Date"] == today) & (all_loan_df["Transaction_Type"] == "Repayment"),
+                "Amount",
+            ].sum()
+        )
 
     monthly_rev = month_revenue(all_df, year_for_projection, month_for_projection)
     monthly_operating_expense = month_expense(operating_all_expense_df, year_for_projection, month_for_projection)
     monthly_fixed_settlement = month_expense(fixed_all_expense_df, year_for_projection, month_for_projection)
+    monthly_loan_disbursed = month_loan_amount(all_loan_df, year_for_projection, month_for_projection, "Disbursement")
+    monthly_loan_repaid = month_loan_amount(all_loan_df, year_for_projection, month_for_projection, "Repayment")
     month_df = all_df[(all_df["Year"] == year_for_projection) & (all_df["Month"] == month_for_projection)]
     month_operating_expense_df = operating_all_expense_df[
         (operating_all_expense_df["Year"] == year_for_projection)
@@ -1546,16 +1837,26 @@ def compute_kpis(
         "balance_period_expense": total_expense_all,
         "balance_period_operating_expense": total_operating_expense_all,
         "balance_net_movement": total_revenue_all - total_expense_all,
+        "balance_loan_disbursed": total_loan_disbursed_all,
+        "balance_loan_repaid": total_loan_repaid_all,
+        "balance_cash_net_after_loans": total_revenue_all - total_expense_all - total_loan_disbursed_all + total_loan_repaid_all,
         "today_revenue": today_revenue,
         "today_expense": today_operating_expense,
         "today_fixed_settlement": today_fixed_settlement,
+        "today_loan_disbursed": today_loan_disbursed,
+        "today_loan_repaid": today_loan_repaid,
         "monthly_revenue": monthly_rev,
         "monthly_expense": monthly_operating_expense,
         "monthly_fixed_settlement": monthly_fixed_settlement,
+        "monthly_loan_disbursed": monthly_loan_disbursed,
+        "monthly_loan_repaid": monthly_loan_repaid,
         "period_revenue": total_revenue_filtered,
         "period_expense": total_operating_expense_filtered,
         "period_fixed_settlement": total_fixed_settlement_filtered,
+        "period_loan_disbursed": total_loan_disbursed_filtered,
+        "period_loan_repaid": total_loan_repaid_filtered,
         "period_net_movement": period_net_movement,
+        "loan_outstanding_total": outstanding_loan_total,
         "current_available_balance": active_balance,
         "avg_daily_revenue": avg_daily,
         "avg_daily_expense": avg_daily_expense,
@@ -3873,6 +4174,9 @@ def _build_smart_insights(
     month_revenue = safe_float(kpis["monthly_revenue"])
     month_operating_expense = safe_float(kpis["monthly_expense"])
     month_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
+    month_loan_disbursed = safe_float(kpis.get("monthly_loan_disbursed", 0.0))
+    month_loan_repaid = safe_float(kpis.get("monthly_loan_repaid", 0.0))
+    outstanding_loans = safe_float(kpis.get("loan_outstanding_total", 0.0))
     fixed_cost_template = safe_float(kpis["fixed_cost"])
     projected_net = safe_float(kpis["projected_net_revenue"])
     net_coverage = safe_float(kpis["net_progress"])
@@ -3891,7 +4195,7 @@ def _build_smart_insights(
                 balance_tone,
                 (
                     f"Cash position: current balance is {format_rwf(current_balance)}. "
-                    "This includes all cash outflows, including rent/labor settlements."
+                    "This includes all cash outflows, including rent/labor settlements and loan disbursements."
                 ),
             )
         )
@@ -3963,6 +4267,21 @@ def _build_smart_insights(
                 f"Settlement load this month is {settlement_load:.1f}% of revenue ({format_rwf(month_fixed_settlement)} vs {format_rwf(month_revenue)}).",
             )
         )
+
+    net_loan_month = month_loan_disbursed - month_loan_repaid
+    if month_loan_disbursed > 0 or month_loan_repaid > 0:
+        loan_tone = "warn" if net_loan_month > 0 else "good"
+        insights.append(
+            (
+                loan_tone,
+                (
+                    f"Loan cash impact in {period_label}: {format_rwf(month_loan_disbursed)} disbursed, "
+                    f"{format_rwf(month_loan_repaid)} repaid, net {format_rwf(net_loan_month)}."
+                ),
+            )
+        )
+    if outstanding_loans > 0:
+        insights.append(("warn", f"Outstanding loan receivable is {format_rwf(outstanding_loans)}."))
 
     if view_unlocked and avg_daily_expense > 0:
         runway_days = current_balance / avg_daily_expense
@@ -4089,6 +4408,9 @@ def render_dashboard_tab(
     month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
     balance_net = safe_float(kpis["balance_net_movement"])
     monthly_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
+    monthly_loan_disbursed = safe_float(kpis.get("monthly_loan_disbursed", 0.0))
+    monthly_loan_repaid = safe_float(kpis.get("monthly_loan_repaid", 0.0))
+    outstanding_loans = safe_float(kpis.get("loan_outstanding_total", 0.0))
     net_coverage = safe_float(kpis["net_progress"])
     key_kpis = [
         (
@@ -4107,6 +4429,9 @@ def render_dashboard_tab(
             "good" if net_coverage >= 1 else "warn",
             "COV",
         ),
+        ("Loans Out (Month)", format_rwf(monthly_loan_disbursed), "warn" if monthly_loan_disbursed > 0 else "", "L-O"),
+        ("Loans Repaid (Month)", format_rwf(monthly_loan_repaid), "good" if monthly_loan_repaid > 0 else "", "L-R"),
+        ("Outstanding Loans", format_rwf(outstanding_loans), "warn" if outstanding_loans > 0 else "good", "OUT"),
         ("Fixed Settlements (Month)", format_rwf(monthly_fixed_settlement), "warn" if monthly_fixed_settlement > 0 else "", "FIX"),
         (
             "Filtered Net (Operating)",
@@ -4605,7 +4930,163 @@ def render_expense_tab(settings: Dict[str, float]) -> None:
         st.rerun()
 
 
-def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFrame) -> None:
+def render_loans_tab(settings: Dict[str, float], all_loan_df: pd.DataFrame) -> None:
+    st.markdown('<div class="section-head">Loan Ledger</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Record staff/borrower loans separately from expenses. Disbursement reduces balance; repayment adds back to balance.</div>',
+        unsafe_allow_html=True,
+    )
+
+    if st.session_state.pop("clear_loan_disburse_inputs", False):
+        st.session_state["loan_disburse_borrower"] = ""
+        st.session_state["loan_disburse_amount"] = ""
+        st.session_state["loan_disburse_note"] = ""
+    if st.session_state.pop("clear_loan_repay_inputs", False):
+        st.session_state["loan_repay_borrower"] = ""
+        st.session_state["loan_repay_amount"] = ""
+        st.session_state["loan_repay_note"] = ""
+
+    disburse_col, repay_col = st.columns(2)
+
+    with disburse_col:
+        with st.container(border=True):
+            st.markdown('<div class="entry-head">Loan Disbursement</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="entry-note">Use this when cash is given out as a recoverable loan, not an expense.</div>',
+                unsafe_allow_html=True,
+            )
+            with st.form("loan_disburse_form", clear_on_submit=False):
+                disburse_date = st.date_input("Disbursement date", value=date.today(), key="loan_disburse_date")
+                disburse_borrower = st.text_input(
+                    "Borrower name",
+                    value="",
+                    placeholder="Example: John",
+                    key="loan_disburse_borrower",
+                )
+                disburse_amount_raw = st.text_input(
+                    "Amount (RWF)",
+                    value="",
+                    placeholder="50,000",
+                    key="loan_disburse_amount",
+                )
+                disburse_note = st.text_input("Note (optional)", key="loan_disburse_note")
+                save_disburse_pressed = st.form_submit_button(
+                    "Save Loan Disbursement",
+                    type="primary",
+                    width="stretch",
+                )
+
+    with repay_col:
+        with st.container(border=True):
+            st.markdown('<div class="entry-head">Loan Repayment</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="entry-note">Use this when borrower returns loan cash. This increases current balance.</div>',
+                unsafe_allow_html=True,
+            )
+            with st.form("loan_repay_form", clear_on_submit=False):
+                repay_date = st.date_input("Repayment date", value=date.today(), key="loan_repay_date")
+                repay_borrower = st.text_input(
+                    "Borrower name",
+                    value="",
+                    placeholder="Same borrower name used at disbursement",
+                    key="loan_repay_borrower",
+                )
+                repay_amount_raw = st.text_input(
+                    "Amount (RWF)",
+                    value="",
+                    placeholder="50,000",
+                    key="loan_repay_amount",
+                )
+                repay_note = st.text_input("Note (optional)", key="loan_repay_note")
+                save_repay_pressed = st.form_submit_button(
+                    "Save Loan Repayment",
+                    type="primary",
+                    width="stretch",
+                )
+
+    if save_disburse_pressed:
+        ok_name, borrower, borrower_err = parse_borrower_name(disburse_borrower)
+        if not ok_name:
+            st.session_state["flash_message"] = {"ok": False, "message": borrower_err}
+            st.rerun()
+        ok_amount, amount, amount_err = parse_expense_input(disburse_amount_raw)
+        if not ok_amount:
+            st.session_state["flash_message"] = {"ok": False, "message": amount_err}
+            st.rerun()
+        ok, msg = save_loan_entry(disburse_date, borrower, amount, "Disbursement", disburse_note, settings)
+        if ok:
+            st.session_state["clear_loan_disburse_inputs"] = True
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+    if save_repay_pressed:
+        ok_name, borrower, borrower_err = parse_borrower_name(repay_borrower)
+        if not ok_name:
+            st.session_state["flash_message"] = {"ok": False, "message": borrower_err}
+            st.rerun()
+        ok_amount, amount, amount_err = parse_expense_input(repay_amount_raw)
+        if not ok_amount:
+            st.session_state["flash_message"] = {"ok": False, "message": amount_err}
+            st.rerun()
+        ok, msg = save_loan_entry(repay_date, borrower, amount, "Repayment", repay_note, settings)
+        if ok:
+            st.session_state["clear_loan_repay_inputs"] = True
+        st.session_state["flash_message"] = {"ok": ok, "message": msg}
+        st.rerun()
+
+    disbursed_total = (
+        safe_float(all_loan_df.loc[all_loan_df["Transaction_Type"] == "Disbursement", "Amount"].sum())
+        if not all_loan_df.empty
+        else 0.0
+    )
+    repaid_total = (
+        safe_float(all_loan_df.loc[all_loan_df["Transaction_Type"] == "Repayment", "Amount"].sum())
+        if not all_loan_df.empty
+        else 0.0
+    )
+    outstanding_total = disbursed_total - repaid_total
+    this_year = date.today().year
+    this_month = date.today().month
+    month_disbursed = month_loan_amount(all_loan_df, this_year, this_month, "Disbursement")
+    month_repaid = month_loan_amount(all_loan_df, this_year, this_month, "Repayment")
+
+    st.markdown("#### Loan KPIs")
+    loan_kpis = [
+        ("Total Disbursed", format_rwf(disbursed_total), "warn", "L-D"),
+        ("Total Repaid", format_rwf(repaid_total), "good", "L-R"),
+        ("Outstanding Loans", format_rwf(outstanding_total), "warn" if outstanding_total > 0 else "good", "OUT"),
+        ("This Month Net Loan", format_rwf(month_disbursed - month_repaid), "warn" if (month_disbursed - month_repaid) > 0 else "good", "MON"),
+    ]
+    _render_kpi_grid(loan_kpis, columns_per_row=4)
+
+    outstanding_df = loan_outstanding_summary(all_loan_df)
+    st.markdown("#### Outstanding By Borrower")
+    if outstanding_df.empty:
+        st.info("No loan records yet.")
+    else:
+        display_outstanding = outstanding_df.copy()
+        display_outstanding["Disbursed"] = display_outstanding["Disbursed"].map(format_rwf)
+        display_outstanding["Repaid"] = display_outstanding["Repaid"].map(format_rwf)
+        display_outstanding["Outstanding"] = display_outstanding["Outstanding"].map(format_rwf)
+        st.dataframe(display_outstanding, width="stretch", hide_index=True)
+
+    st.markdown("#### Loan Transactions")
+    if all_loan_df.empty:
+        st.info("No loan transactions recorded yet.")
+    else:
+        loan_display_df = all_loan_df.copy().sort_values(["Date", "Created_At"], ascending=[False, False]).reset_index(drop=True)
+        loan_display_df["Date"] = pd.to_datetime(loan_display_df["Date"]).dt.strftime("%Y-%m-%d")
+        loan_display_df["Amount"] = loan_display_df["Amount"].map(format_rwf)
+        st.dataframe(
+            loan_display_df[
+                ["Date", "Borrower", "Amount", "Transaction_Type", "Note", "Month", "Year", "Created_At"]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+
+def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFrame, all_loan_df: pd.DataFrame) -> None:
     st.markdown('<div class="section-head">Reports</div>', unsafe_allow_html=True)
     st.markdown(
         '<div class="section-note">Filter by month and year, review records, and download data.</div>',
@@ -4614,7 +5095,8 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
 
     revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
     expense_years = all_expense_df["Year"].unique().tolist() if not all_expense_df.empty else []
-    years = sorted({*revenue_years, *expense_years})
+    loan_years = all_loan_df["Year"].unique().tolist() if not all_loan_df.empty else []
+    years = sorted({*revenue_years, *expense_years, *loan_years})
     year_options = ["All"] + [str(y) for y in years]
     if str(date.today().year) in year_options:
         default_year_index = year_options.index(str(date.today().year))
@@ -4654,6 +5136,14 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         date.today(),
         date.today(),
     )
+    filtered_loan_df = period_from_filters(
+        all_loan_df,
+        selected_year,
+        selected_month,
+        False,
+        date.today(),
+        date.today(),
+    )
 
     rooms_revenue = (
         safe_float(filtered_revenue_df.loc[filtered_revenue_df["Revenue_Type"] == "Rooms", "Revenue"].sum())
@@ -4672,7 +5162,18 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
     )
     total_revenue = safe_float(filtered_revenue_df["Revenue"].sum()) if not filtered_revenue_df.empty else 0.0
     total_expense = safe_float(filtered_expense_df["Expense"].sum()) if not filtered_expense_df.empty else 0.0
+    loan_disbursed = (
+        safe_float(filtered_loan_df.loc[filtered_loan_df["Transaction_Type"] == "Disbursement", "Amount"].sum())
+        if not filtered_loan_df.empty
+        else 0.0
+    )
+    loan_repaid = (
+        safe_float(filtered_loan_df.loc[filtered_loan_df["Transaction_Type"] == "Repayment", "Amount"].sum())
+        if not filtered_loan_df.empty
+        else 0.0
+    )
     net_total = total_revenue - total_expense
+    cash_net_after_loans = net_total - loan_disbursed + loan_repaid
 
     summary_df = pd.DataFrame(
         {
@@ -4683,8 +5184,12 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
                 "Wedding Revenue",
                 "Total Expenses",
                 "Net Movement",
+                "Loan Disbursed",
+                "Loan Repaid",
+                "Net Cash After Loans",
                 "Revenue Records",
                 "Expense Records",
+                "Loan Records",
             ],
             "Value": [
                 format_rwf(total_revenue),
@@ -4693,8 +5198,12 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
                 format_rwf(wedding_revenue),
                 format_rwf(total_expense),
                 format_rwf(net_total),
+                format_rwf(loan_disbursed),
+                format_rwf(loan_repaid),
+                format_rwf(cash_net_after_loans),
                 str(len(filtered_revenue_df)),
                 str(len(filtered_expense_df)),
+                str(len(filtered_loan_df)),
             ],
         }
     )
@@ -4723,10 +5232,26 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         expense_display_df["Expense"] = expense_display_df["Expense"].map(format_rwf)
         st.dataframe(expense_display_df, width="stretch", hide_index=True)
 
-    download_col_1, download_col_2, download_col_3 = st.columns(3)
+    st.markdown("#### Loan Records")
+    if filtered_loan_df.empty:
+        st.info("No loan records found for the selected month/year.")
+    else:
+        loan_display_df = filtered_loan_df.copy()
+        loan_display_df["Date"] = pd.to_datetime(loan_display_df["Date"]).dt.strftime("%Y-%m-%d")
+        loan_display_df["Amount"] = loan_display_df["Amount"].map(format_rwf)
+        st.dataframe(
+            loan_display_df[
+                ["Date", "Borrower", "Amount", "Transaction_Type", "Note", "Month", "Year", "Created_At"]
+            ],
+            width="stretch",
+            hide_index=True,
+        )
+
+    download_col_1, download_col_2, download_col_3, download_col_4 = st.columns(4)
 
     revenue_csv = filtered_revenue_df.to_csv(index=False).encode("utf-8")
     expense_csv = filtered_expense_df.to_csv(index=False).encode("utf-8")
+    loan_csv = filtered_loan_df.to_csv(index=False).encode("utf-8")
     report_file_key = f"{selected_year}_{selected_month.replace(' ', '_')}".lower()
 
     download_col_1.download_button(
@@ -4743,15 +5268,23 @@ def render_reports_tab(all_revenue_df: pd.DataFrame, all_expense_df: pd.DataFram
         mime="text/csv",
         width="stretch",
     )
+    download_col_3.download_button(
+        "Download Loan CSV",
+        data=loan_csv,
+        file_name=f"serenity_loans_{report_file_key}.csv",
+        mime="text/csv",
+        width="stretch",
+    )
 
     export_buffer = BytesIO()
     with pd.ExcelWriter(export_buffer, engine="openpyxl") as writer:
         filtered_revenue_df.to_excel(writer, index=False, sheet_name="Revenue")
         filtered_expense_df.to_excel(writer, index=False, sheet_name="Expenses")
+        filtered_loan_df.to_excel(writer, index=False, sheet_name="Loans")
         summary_df.to_excel(writer, index=False, sheet_name="Summary")
     export_buffer.seek(0)
 
-    download_col_3.download_button(
+    download_col_4.download_button(
         "Download Excel Report",
         data=export_buffer.getvalue(),
         file_name=f"serenity_report_{report_file_key}.xlsx",
@@ -4817,6 +5350,7 @@ def main() -> None:
     settings = read_settings()
     all_revenue_df = read_daily_data()
     all_expense_df = read_expense_data()
+    all_loan_df = read_loan_data()
     if "view_unlocked" not in st.session_state:
         st.session_state["view_unlocked"] = False
     if "edit_unlocked" not in st.session_state:
@@ -4862,6 +5396,12 @@ def main() -> None:
             st.session_state["bar_note"] = ""
             st.session_state["wedding_revenue_input"] = ""
             st.session_state["wedding_note"] = ""
+            st.session_state["loan_disburse_borrower"] = ""
+            st.session_state["loan_disburse_amount"] = ""
+            st.session_state["loan_disburse_note"] = ""
+            st.session_state["loan_repay_borrower"] = ""
+            st.session_state["loan_repay_amount"] = ""
+            st.session_state["loan_repay_note"] = ""
             st.session_state["active_app_section"] = "Dashboard"
             st.session_state["admin_section_mode"] = "Review/Edit Entries"
             st.session_state["admin_review_mode"] = "Revenue entries"
@@ -4878,7 +5418,8 @@ def main() -> None:
         st.markdown("### Dashboard Filter")
         revenue_years = all_revenue_df["Year"].unique().tolist() if not all_revenue_df.empty else []
         expense_years = all_expense_df["Year"].unique().tolist() if not all_expense_df.empty else []
-        available_years = sorted({*revenue_years, *expense_years})
+        loan_years = all_loan_df["Year"].unique().tolist() if not all_loan_df.empty else []
+        available_years = sorted({*revenue_years, *expense_years, *loan_years})
         if not available_years:
             available_years = [date.today().year]
         year_options = ["All"] + [str(year) for year in available_years]
@@ -4902,7 +5443,7 @@ def main() -> None:
             value=False,
             key="dashboard_custom_range",
         )
-        default_start, default_end = combined_filter_bounds(all_revenue_df, all_expense_df)
+        default_start, default_end = combined_filter_bounds(all_revenue_df, all_expense_df, all_loan_df)
         start_date = st.date_input("Start date", value=default_start, key="dashboard_start_date")
         end_date = st.date_input("End date", value=default_end, key="dashboard_end_date")
         if start_date > end_date:
@@ -4952,19 +5493,29 @@ def main() -> None:
         start_date,
         end_date,
     )
+    filtered_loan_df = period_from_filters(
+        all_loan_df,
+        selected_year,
+        selected_month,
+        use_valid_custom_range,
+        start_date,
+        end_date,
+    )
 
     kpis = compute_kpis(
         all_revenue_df,
         filtered_revenue_df,
         all_expense_df,
         filtered_expense_df,
+        all_loan_df,
+        filtered_loan_df,
         settings,
         selected_year,
         selected_month,
     )
 
     render_header(kpis, view_unlocked)
-    app_sections = ["Dashboard", "Add Revenue", "Add Expense", "Reports", "Admin"]
+    app_sections = ["Dashboard", "Add Revenue", "Add Expense", "Loans", "Reports", "Admin"]
     if "active_app_section" not in st.session_state:
         st.session_state["active_app_section"] = app_sections[0]
     active_section = st.radio(
@@ -4993,8 +5544,11 @@ def main() -> None:
     if active_section == "Add Expense":
         render_expense_tab(settings)
 
+    if active_section == "Loans":
+        render_loans_tab(settings, all_loan_df)
+
     if active_section == "Reports":
-        render_reports_tab(all_revenue_df, all_expense_df)
+        render_reports_tab(all_revenue_df, all_expense_df, all_loan_df)
 
     if active_section == "Admin":
         render_admin_tab(settings, all_revenue_df, view_unlocked)

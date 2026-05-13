@@ -3873,9 +3873,13 @@ def _build_smart_insights(
     month_revenue = safe_float(kpis["monthly_revenue"])
     month_operating_expense = safe_float(kpis["monthly_expense"])
     month_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
+    fixed_cost_template = safe_float(kpis["fixed_cost"])
+    projected_net = safe_float(kpis["projected_net_revenue"])
+    net_coverage = safe_float(kpis["net_progress"])
     month_net = month_revenue - month_operating_expense
     current_balance = safe_float(kpis["current_available_balance"])
     projected_balance = safe_float(kpis["est_month_end_balance"])
+    avg_daily_expense = safe_float(kpis["avg_daily_expense"])
     filtered_revenue = safe_float(kpis["period_revenue"])
     filtered_expense = safe_float(kpis["period_expense"])
     filtered_net = safe_float(kpis["period_net_movement"])
@@ -3914,6 +3918,28 @@ def _build_smart_insights(
     else:
         insights.append(("info", f"No operating revenue/expense activity recorded yet for {period_label}."))
 
+    if fixed_cost_template > 0:
+        if net_coverage >= 1:
+            coverage_tone = "good"
+            coverage_note = "at or above 100%, so projected operating net can fully cover the fixed template."
+        elif net_coverage >= 0.75:
+            coverage_tone = "warn"
+            coverage_note = "below 100%, so fixed template coverage is close but still incomplete."
+        else:
+            coverage_tone = "warn"
+            coverage_note = "well below 100%, so operating net is not yet strong enough to cover the fixed template."
+        coverage_gap = max(fixed_cost_template - projected_net, 0.0)
+        insights.append(
+            (
+                coverage_tone,
+                (
+                    f"Net Coverage = Projected Operating Net / Manual Fixed Template = {net_coverage * 100:.1f}%. "
+                    f"This is {coverage_note} "
+                    f"{'Remaining gap: ' + format_rwf(coverage_gap) + '.' if coverage_gap > 0 else ''}"
+                ),
+            )
+        )
+
     fixed_tone = "warn" if month_fixed_settlement > 0 else "info"
     if month_fixed_settlement > 0:
         insights.append(
@@ -3927,6 +3953,26 @@ def _build_smart_insights(
         )
     else:
         insights.append(("info", f"No rent/labor settlement payment has been recorded in {period_label}."))
+
+    if month_revenue > 0 and month_fixed_settlement > 0:
+        settlement_load = (month_fixed_settlement / month_revenue) * 100.0
+        settlement_tone = "warn" if settlement_load >= 35 else "info"
+        insights.append(
+            (
+                settlement_tone,
+                f"Settlement load this month is {settlement_load:.1f}% of revenue ({format_rwf(month_fixed_settlement)} vs {format_rwf(month_revenue)}).",
+            )
+        )
+
+    if view_unlocked and avg_daily_expense > 0:
+        runway_days = current_balance / avg_daily_expense
+        runway_tone = "good" if runway_days >= 30 else "warn"
+        insights.append(
+            (
+                runway_tone,
+                f"Cash runway estimate: about {runway_days:.1f} operating-expense days at the current average burn rate.",
+            )
+        )
 
     this_month_df = all_revenue_df[
         (all_revenue_df["Year"] == projection_year) & (all_revenue_df["Month"] == projection_month)
@@ -3943,6 +3989,53 @@ def _build_smart_insights(
             top_value = safe_float(stream_totals.loc[0, "Revenue"])
             top_share = (top_value / month_revenue * 100.0) if month_revenue else 0.0
             insights.append(("info", f"Top revenue stream in {period_label}: {top_stream} ({format_rwf(top_value)}, {top_share:.1f}% share)."))
+            stream_map = {str(row["Revenue_Type"]): safe_float(row["Revenue"]) for _, row in stream_totals.iterrows()}
+            rooms_rev = stream_map.get("Rooms", 0.0)
+            bar_rev = stream_map.get("Bar", 0.0)
+            wedding_rev = stream_map.get("Wedding", 0.0)
+
+            rooms_days = int(this_month_df.loc[this_month_df["Revenue_Type"] == "Rooms", "Date"].nunique())
+            bar_days = int(this_month_df.loc[this_month_df["Revenue_Type"] == "Bar", "Date"].nunique())
+            wedding_days = int(this_month_df.loc[this_month_df["Revenue_Type"] == "Wedding", "Date"].nunique())
+
+            avg_rooms_day = rooms_rev / rooms_days if rooms_days else 0.0
+            avg_bar_day = bar_rev / bar_days if bar_days else 0.0
+            avg_wedding_day = wedding_rev / wedding_days if wedding_days else 0.0
+
+            if wedding_days > 0:
+                insights.append(
+                    (
+                        "info",
+                        f"Wedding activity: {wedding_days} days in {period_label}, average {format_rwf(avg_wedding_day)} per wedding day.",
+                    )
+                )
+                if avg_rooms_day > 0:
+                    wedding_yield_multiple = avg_wedding_day / avg_rooms_day
+                    wedding_tone = "good" if wedding_yield_multiple >= 1.5 else "warn"
+                    insights.append(
+                        (
+                            wedding_tone,
+                            f"Wedding yield is {wedding_yield_multiple:.2f}x the average rooms day ({format_rwf(avg_rooms_day)}).",
+                        )
+                    )
+
+            if rooms_rev > 0 and bar_rev > 0:
+                bar_capture = bar_rev / rooms_rev
+                bar_tone = "warn" if bar_capture < 0.15 else "good" if bar_capture >= 0.35 else "info"
+                insights.append(
+                    (
+                        bar_tone,
+                        (
+                            f"Bar monetization vs rooms is {bar_capture * 100:.1f}% "
+                            f"(bar {format_rwf(bar_rev)} vs rooms {format_rwf(rooms_rev)})."
+                        ),
+                    )
+                )
+            elif bar_rev == 0 and rooms_rev > 0:
+                insights.append(("warn", f"No bar revenue recorded in {period_label} while rooms generated {format_rwf(rooms_rev)}."))
+
+            if bar_days > 0:
+                insights.append(("info", f"Average bar revenue per active bar day is {format_rwf(avg_bar_day)}."))
     else:
         insights.append(("info", f"No revenue entries have been recorded yet in {period_label}."))
 
@@ -3996,6 +4089,7 @@ def render_dashboard_tab(
     month_net = safe_float(kpis["monthly_revenue"]) - safe_float(kpis["monthly_expense"])
     balance_net = safe_float(kpis["balance_net_movement"])
     monthly_fixed_settlement = safe_float(kpis.get("monthly_fixed_settlement", 0.0))
+    net_coverage = safe_float(kpis["net_progress"])
     key_kpis = [
         (
             "Current Balance",
@@ -4007,6 +4101,12 @@ def render_dashboard_tab(
         ("Month Revenue", format_rwf(safe_float(kpis["monthly_revenue"])), "", "MON"),
         ("Operating Expense (Month)", format_rwf(safe_float(kpis["monthly_expense"])), "warn", "OPE"),
         ("Operating Net (Month)", format_rwf(month_net), "good" if month_net >= 0 else "bad", "NET"),
+        (
+            "Net Coverage",
+            protected_percent(net_coverage, view_unlocked),
+            "good" if net_coverage >= 1 else "warn",
+            "COV",
+        ),
         ("Fixed Settlements (Month)", format_rwf(monthly_fixed_settlement), "warn" if monthly_fixed_settlement > 0 else "", "FIX"),
         (
             "Filtered Net (Operating)",
@@ -4025,6 +4125,123 @@ def render_dashboard_tab(
 
     st.markdown('<div class="section-head">Key KPIs</div>', unsafe_allow_html=True)
     _render_kpi_grid(key_kpis, columns_per_row=4)
+
+    projection_year = int(safe_float(kpis["projection_year"]))
+    projection_month = int(safe_float(kpis["projection_month"]))
+    period_label = f"{month_name[projection_month]} {projection_year}"
+    period_days = monthrange(projection_year, projection_month)[1]
+    period_revenue_df = all_revenue_df[
+        (all_revenue_df["Year"] == projection_year) & (all_revenue_df["Month"] == projection_month)
+    ].copy()
+    stream_totals = {"Rooms": 0.0, "Bar": 0.0, "Wedding": 0.0}
+    if not period_revenue_df.empty:
+        grouped = period_revenue_df.groupby("Revenue_Type", as_index=False)["Revenue"].sum()
+        stream_totals.update({str(row["Revenue_Type"]): safe_float(row["Revenue"]) for _, row in grouped.iterrows()})
+
+    rooms_rev = safe_float(stream_totals.get("Rooms", 0.0))
+    bar_rev = safe_float(stream_totals.get("Bar", 0.0))
+    wedding_rev = safe_float(stream_totals.get("Wedding", 0.0))
+    total_stream_revenue = rooms_rev + bar_rev + wedding_rev
+    rooms_share = (rooms_rev / total_stream_revenue * 100.0) if total_stream_revenue else 0.0
+    bar_share = (bar_rev / total_stream_revenue * 100.0) if total_stream_revenue else 0.0
+    wedding_share = (wedding_rev / total_stream_revenue * 100.0) if total_stream_revenue else 0.0
+    top_share = max(rooms_share, bar_share, wedding_share) if total_stream_revenue else 0.0
+
+    active_revenue_days = int(period_revenue_df["Date"].nunique()) if not period_revenue_df.empty else 0
+    revenue_day_coverage = (active_revenue_days / period_days) if period_days else 0.0
+
+    rooms_days = int(period_revenue_df.loc[period_revenue_df["Revenue_Type"] == "Rooms", "Date"].nunique()) if not period_revenue_df.empty else 0
+    bar_days = int(period_revenue_df.loc[period_revenue_df["Revenue_Type"] == "Bar", "Date"].nunique()) if not period_revenue_df.empty else 0
+    wedding_days = int(period_revenue_df.loc[period_revenue_df["Revenue_Type"] == "Wedding", "Date"].nunique()) if not period_revenue_df.empty else 0
+
+    avg_rooms_day = rooms_rev / rooms_days if rooms_days else 0.0
+    avg_bar_day = bar_rev / bar_days if bar_days else 0.0
+    avg_wedding_day = wedding_rev / wedding_days if wedding_days else 0.0
+    operating_margin = (month_net / total_stream_revenue) if total_stream_revenue else 0.0
+    bar_to_rooms_ratio = (bar_rev / rooms_rev) if rooms_rev else 0.0
+
+    stream_kpis = [
+        ("Rooms Revenue", f"{format_rwf(rooms_rev)} ({rooms_share:.1f}%)", "", "RMS"),
+        ("Bar Revenue", f"{format_rwf(bar_rev)} ({bar_share:.1f}%)", "", "BAR"),
+        ("Wedding Revenue", f"{format_rwf(wedding_rev)} ({wedding_share:.1f}%)", "", "WED"),
+        (
+            "Revenue-Day Coverage",
+            f"{active_revenue_days}/{period_days} ({revenue_day_coverage * 100:.1f}%)",
+            "good" if revenue_day_coverage >= 0.75 else "warn",
+            "DAY",
+        ),
+        ("Avg Rooms Day", format_rwf(avg_rooms_day) if rooms_days else "No rooms days", "", "ARM"),
+        ("Avg Bar Day", format_rwf(avg_bar_day) if bar_days else "No bar days", "", "ABR"),
+        ("Avg Wedding Day", format_rwf(avg_wedding_day) if wedding_days else "No wedding days", "", "AWD"),
+        (
+            "Operating Margin",
+            f"{operating_margin * 100:.1f}%",
+            "good" if operating_margin >= 0.25 else "warn" if operating_margin >= 0.1 else "bad",
+            "MAR",
+        ),
+    ]
+
+    st.markdown('<div class="section-head">Business Model KPIs</div>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="section-note">Operational view for {period_label}: rooms, bar, and short wedding events.</div>',
+        unsafe_allow_html=True,
+    )
+    _render_kpi_grid(stream_kpis, columns_per_row=4)
+
+    action_board: list[tuple[str, str]] = []
+    if total_stream_revenue > 0:
+        if top_share >= 70:
+            action_board.append(
+                (
+                    "warn",
+                    f"Revenue concentration risk is high: top stream contributes {top_share:.1f}% of {period_label} revenue.",
+                )
+            )
+        elif top_share <= 50:
+            action_board.append(("good", f"Revenue mix is balanced in {period_label}; no single stream exceeds 50%."))
+        else:
+            action_board.append(("info", f"Revenue mix is moderate; top stream share is {top_share:.1f}% in {period_label}."))
+
+        if rooms_rev > 0:
+            bar_tone = "warn" if bar_to_rooms_ratio < 0.15 else "good" if bar_to_rooms_ratio >= 0.35 else "info"
+            action_board.append(
+                (
+                    bar_tone,
+                    f"Bar capture ratio (bar vs rooms) is {bar_to_rooms_ratio * 100:.1f}% in {period_label}.",
+                )
+            )
+
+        if wedding_days > 0 and avg_rooms_day > 0:
+            wedding_multiple = avg_wedding_day / avg_rooms_day
+            wedding_tone = "good" if wedding_multiple >= 1.5 else "info"
+            action_board.append(
+                (
+                    wedding_tone,
+                    (
+                        f"Wedding day value is {wedding_multiple:.2f}x rooms day average. "
+                        "Use wedding dates for premium offers and bundled add-ons."
+                    ),
+                )
+            )
+        elif wedding_days == 0:
+            action_board.append(("info", f"No wedding days recorded in {period_label}; target at least 1-2 short-event bookings."))
+    else:
+        action_board.append(("warn", f"No revenue recorded yet for {period_label}."))
+
+    if revenue_day_coverage < 0.6:
+        action_board.append(("warn", f"Revenue was recorded on only {revenue_day_coverage * 100:.1f}% of month days; continuity is weak."))
+    else:
+        action_board.append(("good", f"Revenue continuity is healthy at {revenue_day_coverage * 100:.1f}% active days."))
+
+    if operating_margin < 0.1 and total_stream_revenue > 0:
+        action_board.append(("warn", "Operating margin is thin; tighten variable costs and prioritize higher-yield sales days."))
+
+    st.markdown('<div class="section-head">Management Action Board</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-note">Priority business signals for pricing, channel mix, and short-term execution.</div>',
+        unsafe_allow_html=True,
+    )
+    _render_insight_grid(action_board, columns_per_row=3)
 
     st.markdown('<div class="section-head">Performance Charts</div>', unsafe_allow_html=True)
     st.markdown(
